@@ -7,24 +7,16 @@ import Trash2 from 'lucide-react/icons/trash-2'
 import RotateCcw from 'lucide-react/icons/rotate-ccw'
 import Pencil from 'lucide-react/icons/pencil'
 import Plus from 'lucide-react/icons/plus'
-import ArrowRight from 'lucide-react/icons/arrow-right'
-import Eye from 'lucide-react/icons/eye'
-import EyeOff from 'lucide-react/icons/eye-off'
-import ShieldCheck from 'lucide-react/icons/shield-check'
 import { z } from 'zod'
-import { apiClient, ApiError, refreshCsrf } from '@/services/api'
+import { apiClient, refreshCsrf } from '@/services/api'
+import { useStaff, type Staff } from '@/features/auth/session'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { QueryState } from '@/components/query-state'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { bangkokDate, calculateTotal } from '@/domain/money'
-import { Shell } from './shell'
 import { PageHeader } from '@/components/page-header'
 
-const staff = z.object({
-  user: z.object({ name: z.string(), email: z.string(), phone: z.string().nullish() }),
-  permissions: z.object({ manage_users: z.boolean(), view_audit_log: z.boolean() }),
-})
 const counts = z.object({ transactions: z.number(), buy: z.number(), sell: z.number() })
 const dashboard = z.object({ totals: counts, all_time: z.object({ customers: z.number() }) })
 const sections = [
@@ -53,71 +45,21 @@ async function read<T>(endpoint: string, schema: z.ZodType<T>, signal: AbortSign
   return z.object({ data: schema }).parse(data).data
 }
 
-export default function LiveWorkspace() {
-  const client = useQueryClient()
-  const session = useQuery({
-    queryKey: ['staff-session'],
-    queryFn: async ({ signal }) => {
-      try {
-        return await read('auth/me', staff, signal)
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) return null
-        throw error
-      }
-    },
-    retry: false,
-    refetchOnWindowFocus: 'always',
-  })
-  const login = useMutation({
-    mutationFn: async (credentials: { email: string; password: string }) => {
-      await refreshCsrf()
-      await apiClient.post('auth/login', credentials)
-    },
-    onSuccess: () => client.invalidateQueries({ queryKey: ['staff-session'] }),
-  })
-  const logout = useMutation({
-    mutationFn: async () => {
-      try {
-        await refreshCsrf()
-        await apiClient.post('auth/logout')
-      } catch (error) {
-        if (!(error instanceof ApiError && error.status === 401)) throw error
-      }
-    },
-    onSuccess: async () => {
-      await client.cancelQueries({ queryKey: ['live'] })
-      client.setQueryData(['staff-session'], null)
-      client.removeQueries({ queryKey: ['live'] })
-      login.reset()
-    },
-  })
-  function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    login.mutate({ email: String(form.get('email')), password: String(form.get('password')) })
-  }
-  if (session.data === null && !session.error) {
-    return <StaffSignIn onSubmit={signIn} pending={login.isPending} error={login.error?.message} />
-  }
-  if (session.data && !session.error) {
-    const { permissions, user } = session.data
-    const livePaths = Object.entries(paths).filter(([, endpoint]) =>
-      endpoint === 'users' || endpoint === 'users/trashed' ? permissions.manage_users : endpoint === 'audit-logs' ? permissions.view_audit_log : true,
-    ).map(([path]) => path)
-    livePaths.push('/profile', '/settings/slips')
-    return <Shell account={user} livePaths={livePaths} signOut={() => logout.mutate()} signingOut={logout.isPending}>
-      {logout.error && <p role="alert" className="text-destructive my-3">{logout.error.message}</p>}
-      <Ledger account={session.data} livePaths={livePaths} />
-    </Shell>
-  }
-  return (
-    <main className="mx-auto max-w-7xl px-5 py-6">
-      <QueryState loading={session.isPending} error={session.error} retry={session.refetch}>{null}</QueryState>
-    </main>
-  )
+/**
+ * Interim screens from the first live build. Each route moves to its own feature module as it is
+ * redesigned; delete this file when none of its paths are routed here any more.
+ */
+export default function LegacyPage() {
+  const account = useStaff()
+  const { permissions } = account
+  const livePaths = Object.entries(paths).filter(([, endpoint]) =>
+    endpoint === 'users' || endpoint === 'users/trashed' ? permissions.manage_users : endpoint === 'audit-logs' ? permissions.view_audit_log : true,
+  ).map(([path]) => path)
+  livePaths.push('/profile', '/settings/slips')
+  return <Ledger account={account} livePaths={livePaths} />
 }
 
-function Ledger({ account, livePaths }: { account: z.infer<typeof staff>; livePaths: string[] }) {
+function Ledger({ account, livePaths }: { account: Staff; livePaths: string[] }) {
   const { pathname } = useLocation()
   if (!livePaths.includes(pathname)) return <div className="panel empty-state"><h1>Page unavailable</h1><Link className="text-primary underline" to="/">Back to overview</Link></div>
   if (pathname === '/settings/slips') return <ReceiptSettings />
@@ -137,23 +79,9 @@ function Ledger({ account, livePaths }: { account: z.infer<typeof staff>; livePa
   )
 }
 
+// A 401 anywhere ends the session through the API client's unauthorized handler.
 function useLiveQuery<T>(key: readonly unknown[], queryFn: (signal: AbortSignal) => Promise<T>) {
-  const client = useQueryClient()
-  return useQuery({
-    queryKey: ['live', ...key],
-    queryFn: async ({ signal }) => {
-      try {
-        return await queryFn(signal)
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          client.setQueryData(['staff-session'], null)
-          client.removeQueries({ queryKey: ['live'] })
-        }
-        throw error
-      }
-    },
-    retry: false,
-  })
+  return useQuery({ queryKey: ['live', ...key], queryFn: ({ signal }) => queryFn(signal), retry: false })
 }
 
 function Overview() {
@@ -587,7 +515,7 @@ function ReceiptSettings() {
   </>
 }
 
-function Profile({ user }: { user: z.infer<typeof staff>['user'] }) {
+function Profile({ user }: { user: Staff['user'] }) {
   const client = useQueryClient()
   const details = useMutation({
     mutationFn: async (form: FormData) => {
@@ -633,64 +561,6 @@ function Profile({ user }: { user: z.infer<typeof staff>['user'] }) {
       <Button type="submit" disabled={passwordState.pending}>Update password</Button>
     </form>
   </div>
-}
-
-function StaffSignIn({ onSubmit, pending, error }: {
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
-  pending: boolean
-  error?: string
-}) {
-  const [showPassword, setShowPassword] = useState(false)
-
-  return (
-    <main className="grid min-h-dvh bg-background md:grid-cols-[minmax(16rem,5fr)_minmax(0,7fr)]">
-      <aside className="relative isolate flex flex-col justify-between gap-8 overflow-hidden bg-[var(--sidebar)] px-6 py-7 text-[#edf6ef] md:gap-12 md:p-10 lg:p-14">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[repeating-linear-gradient(120deg,transparent_0px,transparent_39px,#d8ecdf12_40px,transparent_41px)] [mask-image:linear-gradient(to_top,black,transparent_80%)]" />
-        <div className="flex items-center gap-3">
-          <span className="brand-symbol" aria-hidden="true">m<span>↗</span></span>
-          <span className="grid">
-            <strong className="text-lg font-extrabold">MBX <span className="font-normal opacity-60">/</span> Ledger</strong>
-            <span className="text-xs text-[#bfd5c8]">Mergui Boss</span>
-          </span>
-        </div>
-        <div className="hidden md:block">
-          <div aria-hidden="true" className="mb-5 h-0.5 w-10 bg-[#f0bf52]" />
-          <p className="max-w-xs text-3xl font-extrabold leading-tight lg:text-4xl">Operations workspace</p>
-        </div>
-        <div className="hidden items-center gap-2 border-t border-white/15 pt-5 text-xs font-semibold text-[#bfd5c8] md:flex">
-          <ShieldCheck aria-hidden="true" size={16} /> Staff access only
-        </div>
-      </aside>
-
-      <section aria-labelledby="staff-sign-in-title" className="flex items-center justify-center px-6 py-12 sm:px-10 md:py-16">
-        <div className="w-full max-w-sm">
-          <header className="mb-8">
-            <p className="mb-2 text-sm font-bold text-primary">Staff workspace</p>
-            <h1 id="staff-sign-in-title" className="text-3xl font-extrabold text-foreground">Sign in to MBX Ledger</h1>
-          </header>
-          <form onSubmit={onSubmit} className="grid gap-5" aria-busy={pending}>
-            <label className="grid gap-2 text-sm font-semibold" htmlFor="staff-email">
-              Work email
-              <Input id="staff-email" name="email" type="email" autoComplete="username" className="h-11" required />
-            </label>
-            <div className="grid gap-2">
-              <label className="text-sm font-semibold" htmlFor="staff-password">Password</label>
-              <div className="relative">
-                <Input id="staff-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" className="h-11 pr-12" required />
-                <Button type="button" variant="ghost" size="icon" className="absolute inset-y-0 right-1 my-auto text-muted-foreground" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((visible) => !visible)}>
-                  {showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
-                </Button>
-              </div>
-            </div>
-            {error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="mt-1 h-11 w-full justify-between px-4" disabled={pending}>
-              {pending ? 'Signing in…' : 'Sign in'} <ArrowRight aria-hidden="true" />
-            </Button>
-          </form>
-        </div>
-      </section>
-    </main>
-  )
 }
 
 function InvoiceSelect({ label, name, value, choices, emptyLabel = 'None', labels = {} }: {

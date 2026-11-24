@@ -1,45 +1,63 @@
+import type { LucideIcon } from 'lucide-react'
 import LayoutDashboard from 'lucide-react/icons/layout-dashboard'
 import ArrowLeftRight from 'lucide-react/icons/arrow-left-right'
-import FileBarChart2 from 'lucide-react/icons/file-chart-column'
+import ChartColumn from 'lucide-react/icons/chart-column-big'
 import ChartNoAxesCombined from 'lucide-react/icons/chart-no-axes-combined'
 import UsersRound from 'lucide-react/icons/users-round'
 import ContactRound from 'lucide-react/icons/contact-round'
-import Settings2 from 'lucide-react/icons/settings-2'
 import SlidersHorizontal from 'lucide-react/icons/sliders-horizontal'
-import Image from 'lucide-react/icons/image'
-import UserRound from 'lucide-react/icons/user-round'
+import Palette from 'lucide-react/icons/palette'
 import Trash2 from 'lucide-react/icons/trash'
 import Landmark from 'lucide-react/icons/landmark'
 import ShieldCheck from 'lucide-react/icons/shield-check'
+import Zap from 'lucide-react/icons/zap'
+import UserRound from 'lucide-react/icons/user-round'
+import type { Permission } from '@/features/auth/session'
 
-export const navigation = [
+export type NavItem = {
+  title: string
+  path: string
+  icon: LucideIcon
+  /** Hidden unless the signed-in staff member has this permission. */
+  requires?: Permission
+  /** Extra words the command palette matches. */
+  keywords?: string
+}
+
+export const navigation: { label: string; items: NavItem[] }[] = [
   {
-    label: 'WORKSPACE',
+    label: 'Operations',
     items: [
-      { title: 'Overview', path: '/', icon: LayoutDashboard },
-      { title: 'Transactions', path: '/transactions', icon: ArrowLeftRight },
-      { title: 'Reports', path: '/reports', icon: FileBarChart2 },
-      { title: 'Exchange rates', path: '/rates', icon: ChartNoAxesCombined },
-      { title: 'Customers', path: '/customers', icon: ContactRound },
+      { title: 'Overview', path: '/', icon: LayoutDashboard, keywords: 'dashboard home' },
+      { title: 'Deal desk', path: '/desk', icon: Zap, keywords: 'pos new transaction buy sell' },
+      { title: 'Transactions', path: '/transactions', icon: ArrowLeftRight, keywords: 'ledger deals' },
+      { title: 'Customers', path: '/customers', icon: ContactRound, keywords: 'clients people' },
+      { title: 'Exchange rates', path: '/rates', icon: ChartNoAxesCombined, keywords: 'board prices' },
+      { title: 'Reports', path: '/reports', icon: ChartColumn, keywords: 'analytics export csv summary' },
     ],
   },
   {
-    label: 'MANAGEMENT',
+    label: 'Management',
     items: [
-      { title: 'Team members', path: '/settings/users', icon: UsersRound },
-      { title: 'Transfer methods', path: '/settings/methods', icon: Landmark },
-      { title: 'Customer sources', path: '/settings/sources', icon: SlidersHorizontal },
-      { title: 'Receipt settings', path: '/settings/slips', icon: Image },
-      { title: 'Audit log', path: '/audit', icon: ShieldCheck, liveOnly: true },
-    ],
-  },
-  {
-    label: 'PERSONAL',
-    items: [
-      { title: 'Settings', path: '/settings/preferences', icon: Settings2 },
-      { title: 'My profile', path: '/profile', icon: UserRound },
-      { title: 'Trash', path: '/trash', icon: Trash2 },
+      { title: 'Team', path: '/settings/users', icon: UsersRound, requires: 'manage_users', keywords: 'staff users roles' },
+      { title: 'Transfer methods', path: '/settings/methods', icon: Landmark, keywords: 'banks wallets' },
+      { title: 'Customer sources', path: '/settings/sources', icon: SlidersHorizontal, keywords: 'channels viber line facebook' },
+      { title: 'Receipt designer', path: '/settings/slips', icon: Palette, keywords: 'slip logo background' },
+      { title: 'Audit log', path: '/audit', icon: ShieldCheck, requires: 'view_audit_log', keywords: 'evidence history' },
+      { title: 'Trash', path: '/trash', icon: Trash2, keywords: 'deleted restore' },
     ],
   },
 ]
-export const allNavigation = navigation.flatMap((group) => group.items)
+
+export const accountNavigation: NavItem[] = [
+  { title: 'My profile', path: '/profile', icon: UserRound, keywords: 'password account' },
+]
+
+export const allNavigation = [...navigation.flatMap((group) => group.items), ...accountNavigation]
+
+/** The nav item a path belongs to (longest matching prefix). */
+export function navItemFor(pathname: string) {
+  return [...allNavigation]
+    .sort((a, b) => b.path.length - a.path.length)
+    .find((item) => (item.path === '/' ? pathname === '/' : pathname.startsWith(item.path)))
+}

@@ -8,11 +8,11 @@ The customer directory supports activity counts, contact editing, and deletion w
 
 Remaining parity work: full customer identity editing and activity breakdown, rate history charts, multi-role editing, report filters beyond the date range and detail drill-down, full dashboard charts, transaction customer lookup/contact edits, and browser preferences in live mode. Public registration and HTTP storage-link setup were intentionally removed from Laravel.
 
-From the workspace root, run `php .\mbx_web_backend\artisan serve --host=127.0.0.1 --port=8000` and, in another terminal, `npm --prefix mbx_web_frontend run dev:live`. Open `http://localhost:3000` with an existing staff account. Vite forwards `/api` and `/sanctum` to Laravel. The local Sanctum stateful origins must include `localhost:3000`. Do not put staff credentials in frontend environment variables.
+From the workspace root, run `php .\mbx_web_backend\artisan serve --host=127.0.0.1 --port=8000` and, in another terminal, `npm --prefix mbx_web_frontend run dev`. Open `http://localhost:3000` with an existing staff account. Vite forwards `/api` and `/sanctum` to Laravel. The local Sanctum stateful origins must include `localhost:3000`. Do not put staff credentials in frontend environment variables.
 
 The live workspace uses the existing admin shell and Laravel data, without demo fixtures. It has staff sign-in and sign-out, dashboard counts, transaction listing and creation, invoice editing and printing, transaction trash and restore, and profile updates and password changes.
 
-Use `npm --prefix mbx_web_frontend run build:live` for the live build. In production, route `/api` and `/sanctum` to Laravel over HTTPS and use the admin hostname in the Sanctum stateful configuration. The Vite development proxy is not included in the build. The plain `dev` and `build` commands still use the demo workspace.
+Use `npm --prefix mbx_web_frontend run build` for the build. In production, route `/api` and `/sanctum` to Laravel over HTTPS and use the admin hostname in the Sanctum stateful configuration. The Vite development proxy is not included in the build.
 
 ## Historical Laravel 8 assessment
 

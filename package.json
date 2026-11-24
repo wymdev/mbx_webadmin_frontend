@@ -7,12 +7,10 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5174",
-    "dev:live": "vite --mode live --host localhost --port 3000 --strictPort",
+    "dev": "vite --host localhost --port 3000 --strictPort",
     "build": "tsc -b && vite build",
-    "build:live": "tsc -b && vite build --mode live",
     "typecheck": "tsc -b",
-    "preview": "vite preview --host 127.0.0.1",
+    "preview": "vite preview --host localhost --port 3000",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
