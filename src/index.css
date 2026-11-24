@@ -1,3 +1,35 @@
+@media print {
+  body:has(.transaction-print) {
+    overflow: visible !important;
+  }
+
+  body:has(.transaction-print) * {
+    visibility: hidden;
+  }
+
+  body:has(.transaction-print) .transaction-print,
+  body:has(.transaction-print) .transaction-print * {
+    visibility: visible;
+  }
+
+  body:has(.transaction-print) [role='dialog']:has(.transaction-print) {
+    position: absolute;
+    inset: 0;
+    transform: none;
+    translate: none;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+  }
+
+  body:has(.transaction-print) .transaction-print {
+    position: absolute;
+    inset: 0 0 auto;
+    background: white;
+    color: black;
+  }
+}
 @import '@fontsource/manrope/latin-400.css';
 @import '@fontsource/manrope/latin-500.css';
 @import '@fontsource/manrope/latin-600.css';

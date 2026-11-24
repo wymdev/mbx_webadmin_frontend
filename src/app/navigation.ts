@@ -10,6 +10,7 @@ import Image from 'lucide-react/icons/image'
 import UserRound from 'lucide-react/icons/user-round'
 import Trash2 from 'lucide-react/icons/trash'
 import Landmark from 'lucide-react/icons/landmark'
+import ShieldCheck from 'lucide-react/icons/shield-check'
 
 export const navigation = [
   {
@@ -29,6 +30,7 @@ export const navigation = [
       { title: 'Transfer methods', path: '/settings/methods', icon: Landmark },
       { title: 'Customer sources', path: '/settings/sources', icon: SlidersHorizontal },
       { title: 'Receipt settings', path: '/settings/slips', icon: Image },
+      { title: 'Audit log', path: '/audit', icon: ShieldCheck, liveOnly: true },
     ],
   },
   {

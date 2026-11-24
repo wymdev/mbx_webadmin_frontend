@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Shell } from './shell'
+import { liveMode } from '@/services/api'
+
+const LiveWorkspace = lazy(() => import('./live-workspace'))
 
 const Dashboard = lazy(() => import('@/features/dashboard/dashboard-page'))
 const Transactions = lazy(() => import('@/features/transactions/transactions-page'))
@@ -20,7 +23,7 @@ const client = new QueryClient({
     mutations: { retry: false },
   },
 })
-const router = createBrowserRouter([
+const router = createBrowserRouter(liveMode ? [{ path: '*', element: <LiveWorkspace /> }] : [
   {
     element: <Shell />,
     children: [

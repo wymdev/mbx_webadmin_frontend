@@ -6,6 +6,12 @@ import { fileURLToPath, URL } from 'node:url'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  server: {
+    proxy: {
+      '/api': 'http://127.0.0.1:8000',
+      '/sanctum': 'http://127.0.0.1:8000',
+    },
+  },
   optimizeDeps: {
     // Avoid scanning optional chart engines and the whole icon catalog on first boot.
     noDiscovery: true,

@@ -1,4 +1,4 @@
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import ArrowUpRight from 'lucide-react/icons/arrow-up-right'
 import Bell from 'lucide-react/icons/bell'
@@ -20,7 +20,7 @@ import UserRound from 'lucide-react/icons/user-round'
 import X from 'lucide-react/icons/x'
 import { navigation, allNavigation } from './navigation'
 import { usePreferences } from '@/stores/preferences'
-import { cn } from '@/lib/utils'
+import { cn, initials } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -50,7 +50,15 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { toast } from 'sonner'
 
-export function Shell() {
+export function Shell({ children, account, livePaths, signOut, signingOut }: {
+  children?: ReactNode
+  account?: { name: string; email: string }
+  livePaths?: readonly string[]
+  signOut?: () => void
+  signingOut?: boolean
+}) {
+  const name = account?.name ?? 'Alex Lee'
+  const visible = (path: string) => livePaths ? livePaths.includes(path) : path !== '/audit'
   const { collapsed, toggleSidebar, theme, toggleTheme } = usePreferences()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width:760px)').matches)
@@ -172,7 +180,7 @@ export function Shell() {
               <span className="workspace-avatar mr-2">MB</span>
               <div>
                 <strong>Mergui Boss</strong>
-                <p className="text-xs text-muted-foreground">Demo operations workspace</p>
+                <p className="text-xs text-muted-foreground">{account ? 'Operations workspace' : 'Demo operations workspace'}</p>
               </div>
               <Check className="ml-auto" />
             </DropdownMenuItem>
@@ -190,7 +198,7 @@ export function Shell() {
           {navigation.map((group) => (
             <div key={group.label} className="nav-group">
               <div className="nav-group-label sidebar-copy">{group.label}</div>
-              {group.items.map((item) => (
+              {group.items.filter((item) => visible(item.path)).map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
@@ -212,30 +220,30 @@ export function Shell() {
         <div className="sidebar-bottom">
           <DropdownMenu>
             <DropdownMenuTrigger className="sidebar-account">
-              <span className="account-avatar">AL</span>
+              <span className="account-avatar">{initials(name)}</span>
               <span className="sidebar-copy flex-1 text-left">
-                <strong>Alex Lee</strong>
-                <small>Workspace administrator</small>
+                <strong>{name}</strong>
+                <small>{account ? 'Staff account' : 'Workspace administrator'}</small>
               </span>
               <ChevronDown className="sidebar-copy size-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-60">
-              <DropdownMenuLabel>Demo administrator</DropdownMenuLabel>
+              <DropdownMenuLabel>{account ? 'Staff account' : 'Demo administrator'}</DropdownMenuLabel>
               <DropdownMenuItem onSelect={() => go('/profile')}>
                 <UserRound /> My profile
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => go('/settings/preferences')}>
+              {visible('/settings/preferences') && <DropdownMenuItem onSelect={() => go('/settings/preferences')}>
                 <Settings2 /> Preferences
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
               <DropdownMenuSeparator />
-              <DropdownMenuItem
+              <DropdownMenuItem disabled={signingOut}
                 onSelect={() =>
-                  toast.info(
+                  signOut ? signOut() : toast.info(
                     'Demo mode has no live account session. Refresh to reset demo changes.',
                   )
                 }
               >
-                <LogOut /> About demo session
+                <LogOut /> {account ? 'Sign out' : 'About demo session'}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -279,7 +287,7 @@ export function Shell() {
               </kbd>
             </button>
             <Badge variant="outline" className="demo-badge">
-              <span className="size-1.5 rounded-full bg-amber-500" /> Demo
+              <span className={cn('size-1.5 rounded-full', account ? 'bg-primary' : 'bg-amber-500')} /> {account ? 'Live' : 'Demo'}
             </Badge>
             <Button
               variant="ghost"
@@ -289,7 +297,7 @@ export function Shell() {
             >
               {theme === 'light' ? <Moon /> : <Sun />}
             </Button>
-            <Popover>
+            {!account && <Popover>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
                   <Bell />
@@ -313,20 +321,20 @@ export function Shell() {
                   </div>
                 </div>
               </PopoverContent>
-            </Popover>
+            </Popover>}
             <span className="topbar-divider" />
             <DropdownMenu>
               <DropdownMenuTrigger
                 className="account-avatar topbar-avatar"
                 aria-label="Account menu"
               >
-                AL
+                {initials(name)}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
-                  Alex Lee{' '}
+                  {name}
                   <p className="text-xs text-muted-foreground font-normal mt-1">
-                    alex@example.test
+                    {account?.email ?? 'alex@example.test'}
                   </p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -334,10 +342,10 @@ export function Shell() {
                   <UserRound />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => go('/settings/preferences')}>
+                {visible('/settings/preferences') && <DropdownMenuItem onSelect={() => go('/settings/preferences')}>
                   <Settings2 />
                   Preferences
-                </DropdownMenuItem>
+                </DropdownMenuItem>}
                 <DropdownMenuItem onSelect={() => setHelpOpen(true)}>
                   <HelpCircle />
                   Workspace guide
@@ -355,14 +363,14 @@ export function Shell() {
               </div>
             }
           >
-            <Outlet />
+            {children ?? <Outlet />}
           </Suspense>
         </main>
         <footer className="workspace-footer">
           <span>© {new Date().getFullYear()} Mergui Boss · MBX Ledger</span>
           <span className="flex items-center gap-2">
             <span className="size-1.5 rounded-full bg-primary" />
-            Demo workspace <span className="opacity-40">/</span> All amounts are sample data
+            {account ? 'Live workspace' : 'Demo workspace / All amounts are sample data'}
           </span>
         </footer>
       </div>
@@ -384,7 +392,7 @@ export function Shell() {
               </CommandGroup>
               <CommandSeparator />
               <CommandGroup heading="Pages">
-                {allNavigation.map((item) => (
+                {allNavigation.filter((item) => visible(item.path)).map((item) => (
                   <CommandItem key={item.path} onSelect={() => go(item.path)}>
                     <item.icon />
                     {item.title}
@@ -404,7 +412,7 @@ export function Shell() {
           <DialogHeader>
             <DialogTitle>A home for your daily operations</DialogTitle>
             <DialogDescription>
-              This is an interactive MBX admin template using fictional demo data.
+              {account ? 'MBX Ledger operations workspace' : 'This is an interactive MBX admin template using fictional demo data.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm">
@@ -416,10 +424,10 @@ export function Shell() {
               Press <kbd>Ctrl / ⌘ K</kbd> to jump to a page. Your theme, sidebar and density
               preferences are saved on this browser.
             </p>
-            <p className="text-muted-foreground">
+            {!account && <p className="text-muted-foreground">
               Records and form changes are kept in memory and reset on refresh. No production
               backend is connected.
-            </p>
+            </p>}
           </div>
         </DialogContent>
       </Dialog>
