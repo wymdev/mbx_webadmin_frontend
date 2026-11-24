@@ -1,44 +1,23 @@
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, type CSSProperties, type ReactElement } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import ArrowUpRight from 'lucide-react/icons/arrow-up-right'
-import Bell from 'lucide-react/icons/bell'
-import Check from 'lucide-react/icons/check'
-import ChevronDown from 'lucide-react/icons/chevron-down'
-import ChevronRight from 'lucide-react/icons/chevron-right'
-import CommandIcon from 'lucide-react/icons/command'
-import HelpCircle from 'lucide-react/icons/circle-question-mark'
+import ChevronsUpDown from 'lucide-react/icons/chevrons-up-down'
 import LogOut from 'lucide-react/icons/log-out'
 import Menu from 'lucide-react/icons/menu'
 import Moon from 'lucide-react/icons/moon'
-import PanelLeftClose from 'lucide-react/icons/panel-left-close'
-import PanelLeftOpen from 'lucide-react/icons/panel-left-open'
+import PanelLeft from 'lucide-react/icons/panel-left'
+import ChevronDown from 'lucide-react/icons/chevron-down'
 import Search from 'lucide-react/icons/search'
-import Settings2 from 'lucide-react/icons/settings-2'
-import ShieldCheck from 'lucide-react/icons/shield-check'
 import Sun from 'lucide-react/icons/sun'
 import UserRound from 'lucide-react/icons/user-round'
-import X from 'lucide-react/icons/x'
-import { navigation, allNavigation } from './navigation'
+import Zap from 'lucide-react/icons/zap'
+import Rows3 from 'lucide-react/icons/rows-3'
+import { navigation, navItemFor, type NavItem } from './navigation'
+import { CommandPalette } from './command-palette'
 import { usePreferences } from '@/stores/preferences'
-import { cn } from '@/lib/utils'
+import { cn, initials } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from '@/components/ui/command'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,382 +26,341 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { toast } from 'sonner'
+import { useSignOut, useStaff } from '@/features/auth/session'
+import { PageSkeleton } from '@/components/page-skeleton'
+import { BangkokClock } from '@/components/bangkok-clock'
 
-export function Shell() {
-  const { collapsed, toggleSidebar, theme, toggleTheme } = usePreferences()
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width:760px)').matches)
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [helpOpen, setHelpOpen] = useState(false)
-  const [read, setRead] = useState(false)
-  const navigate = useNavigate()
-  const location = useLocation()
-  const page =
-    allNavigation.find((item) => item.path === location.pathname)?.title ||
-    (location.pathname.includes('new') ? 'New transaction' : 'Workspace')
+export function useThemeEffect() {
+  const theme = usePreferences((state) => state.theme)
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
-  useEffect(() => {
-    const media = window.matchMedia('(max-width:760px)')
-    const update = () => setIsMobile(media.matches)
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
-  useEffect(() => {
-    if (!mobileOpen || !isMobile) return
-    const previous = document.activeElement as HTMLElement | null
-    const sidebar = document.querySelector<HTMLElement>('.sidebar')
-    const focusable = () =>
-      Array.from(sidebar?.querySelectorAll<HTMLElement>('a[href],button') || []).filter(
-        (el) => el.getClientRects().length > 0,
-      )
-    focusable()[0]?.focus()
-    const trap = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab') return
-      const items = focusable()
-      const first = items[0]
-      const last = items.at(-1)
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last?.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first?.focus()
-      }
-    }
-    const overflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    document.addEventListener('keydown', trap)
-    return () => {
-      document.body.style.overflow = overflow
-      document.removeEventListener('keydown', trap)
-      previous?.focus()
-    }
-  }, [mobileOpen, isMobile])
+}
+
+/** Ctrl/⌘ K opens search, Ctrl/⌘ B collapses the sidebar, F2 opens the deal desk from anywhere. */
+function useGlobalShortcuts(openPalette: () => void, toggleSidebar: () => void) {
+  const navigate = useNavigate()
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
-        setSearchOpen((v) => !v)
+        openPalette()
       }
-      if (event.key === 'Escape') setMobileOpen(false)
+      if (event.key === 'F2') {
+        event.preventDefault()
+        navigate('/desk')
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
+        event.preventDefault()
+        toggleSidebar()
+      }
     }
     window.addEventListener('keydown', keydown)
     return () => window.removeEventListener('keydown', keydown)
-  }, [])
-  function go(path: string) {
-    navigate(path)
-    setSearchOpen(false)
-    setMobileOpen(false)
-  }
+  }, [navigate, openPalette, toggleSidebar])
+}
+
+export function Shell() {
+  const { collapsed, toggleSidebar } = usePreferences()
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const location = useLocation()
+  const current = navItemFor(location.pathname)
+  useThemeEffect()
+  useGlobalShortcuts(() => setPaletteOpen(true), toggleSidebar)
+
   return (
-    <div className={cn('app-layout', collapsed && 'sidebar-collapsed')}>
+    <div
+      className="min-h-dvh bg-surface lg:grid lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)] lg:transition-[grid-template-columns] lg:duration-200"
+      style={{ '--sidebar-width': collapsed ? '4.75rem' : '17rem' } as CSSProperties}
+    >
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      {mobileOpen && (
-        <button
-          className="sidebar-backdrop"
-          aria-label="Close navigation"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-      <aside
-        className={cn('sidebar', mobileOpen && 'is-open')}
-        aria-label="Main navigation"
-        inert={isMobile && !mobileOpen}
-        role={isMobile && mobileOpen ? 'dialog' : undefined}
-        aria-modal={isMobile && mobileOpen ? true : undefined}
-      >
-        <div className="brand-row">
-          <NavLink to="/" className="brand">
-            <span className="brand-symbol">
-              m<span>↗</span>
-            </span>
-            <span className="sidebar-copy">
-              <strong>
-                MBX<span className="font-normal opacity-50"> / </span>Ledger
-              </strong>
-              <small>Money moves. Made simple.</small>
-            </span>
-          </NavLink>
-          <button
-            className="mobile-close"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Close navigation"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger className="workspace-selector">
-            <span className="workspace-avatar">MB</span>
-            <span className="sidebar-copy flex-1 text-left">
-              <strong>Mergui Boss</strong>
-              <small>Operations workspace</small>
-            </span>
-            <ChevronDown className="sidebar-copy size-4 opacity-50" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
-            <DropdownMenuItem>
-              <span className="workspace-avatar mr-2">MB</span>
-              <div>
-                <strong>Mergui Boss</strong>
-                <p className="text-xs text-muted-foreground">Demo operations workspace</p>
-              </div>
-              <Check className="ml-auto" />
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={() =>
-                toast.info('Additional workspaces will be available after backend integration.')
-              }
-            >
-              <Settings2 /> Manage workspace
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <nav className="sidebar-nav">
-          {navigation.map((group) => (
-            <div key={group.label} className="nav-group">
-              <div className="nav-group-label sidebar-copy">{group.label}</div>
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  end
-                  title={collapsed ? item.title : undefined}
-                  onClick={() => setMobileOpen(false)}
-                  className={({ isActive }) => cn('sidebar-link', isActive && 'active')}
-                >
-                  <item.icon size={18} />
-                  <span className="sidebar-copy flex-1">{item.title}</span>
-                  {item.path === '/transactions' && (
-                    <span className="sidebar-copy nav-pill">Ledger</span>
-                  )}
-                </NavLink>
-              ))}
-            </div>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <DropdownMenu>
-            <DropdownMenuTrigger className="sidebar-account">
-              <span className="account-avatar">AL</span>
-              <span className="sidebar-copy flex-1 text-left">
-                <strong>Alex Lee</strong>
-                <small>Workspace administrator</small>
-              </span>
-              <ChevronDown className="sidebar-copy size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="top" align="start" className="w-60">
-              <DropdownMenuLabel>Demo administrator</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => go('/profile')}>
-                <UserRound /> My profile
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => go('/settings/preferences')}>
-                <Settings2 /> Preferences
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() =>
-                  toast.info(
-                    'Demo mode has no live account session. Refresh to reset demo changes.',
-                  )
-                }
-              >
-                <LogOut /> About demo session
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+      <aside className="sticky top-0 hidden h-dvh lg:block" aria-label="Main navigation">
+        <SidebarContent collapsed={collapsed} openSearch={() => setPaletteOpen(true)} />
       </aside>
-      <div className="workspace-main" inert={isMobile && mobileOpen}>
-        <header className="topbar">
-          <div className="flex min-w-0 items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="desktop-toggle"
-              onClick={toggleSidebar}
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="mobile-toggle"
-              onClick={() => setMobileOpen(true)}
-              aria-label="Open navigation"
-            >
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="w-72 border-0 bg-[var(--sidebar)] p-0 text-white [&>button]:text-white">
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          {/* Close the drawer when a link inside it is followed. */}
+          <div className="h-full" onClickCapture={(event) => (event.target as HTMLElement).closest('a') && setMobileOpen(false)}>
+            <SidebarContent
+              collapsed={false}
+              openSearch={() => {
+                setMobileOpen(false)
+                setPaletteOpen(true)
+              }}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <div className="min-w-0 lg:py-2 lg:pr-2">
+        <div className="flex min-h-dvh flex-col bg-background lg:min-h-[calc(100dvh-1rem)] lg:rounded-2xl lg:border lg:shadow-xs">
+          <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/70 sm:px-5 lg:top-2 lg:rounded-t-2xl lg:px-6">
+            <Button variant="ghost" size="icon-sm" className="lg:hidden" aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
               <Menu />
             </Button>
-            <span className="text-muted-foreground hidden sm:inline">Workspace</span>
-            <ChevronRight size={14} className="text-muted-foreground hidden sm:block" />
-            <span className="truncate font-medium">{page}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              aria-label="Search workspace"
-              className="global-search"
-              onClick={() => setSearchOpen(true)}
-            >
-              <Search size={15} />
-              <span>Search anything…</span>
-              <kbd>
-                <CommandIcon size={11} /> K
-              </kbd>
-            </button>
-            <Badge variant="outline" className="demo-badge">
-              <span className="size-1.5 rounded-full bg-amber-500" /> Demo
-            </Badge>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleTheme}
-              aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-            >
-              {theme === 'light' ? <Moon /> : <Sun />}
-            </Button>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-                  <Bell />
-                  {!read && <span className="notification-dot" />}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="hidden lg:inline-flex"
+                  aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                  onClick={toggleSidebar}
+                >
+                  <PanelLeft />
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-80">
-                <div className="flex justify-between items-center mb-4">
-                  <strong>Notifications</strong>
-                  <button className="text-xs text-primary" onClick={() => setRead(true)}>
-                    Mark all read
-                  </button>
-                </div>
-                <div className="flex gap-3 rounded-lg bg-muted p-3">
-                  <ShieldCheck className="shrink-0 text-primary" size={20} />
-                  <div>
-                    <p className="font-medium text-sm">Your demo workspace is ready</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Explore freely. All records are fictional and changes last for this session.
-                    </p>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-            <span className="topbar-divider" />
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className="account-avatar topbar-avatar"
-                aria-label="Account menu"
-              >
-                AL
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  Alex Lee{' '}
-                  <p className="text-xs text-muted-foreground font-normal mt-1">
-                    alex@example.test
-                  </p>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => go('/profile')}>
-                  <UserRound />
-                  Profile
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => go('/settings/preferences')}>
-                  <Settings2 />
-                  Preferences
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setHelpOpen(true)}>
-                  <HelpCircle />
-                  Workspace guide
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </header>
-        <main id="main" className="main-content">
-          <Suspense
-            fallback={
-              <div className="space-y-4" aria-label="Loading page">
-                <div className="h-20 rounded-xl bg-muted animate-pulse" />
-                <div className="h-64 rounded-xl bg-muted animate-pulse" />
-              </div>
-            }
-          >
-            <Outlet />
-          </Suspense>
-        </main>
-        <footer className="workspace-footer">
-          <span>© {new Date().getFullYear()} Mergui Boss · MBX Ledger</span>
-          <span className="flex items-center gap-2">
-            <span className="size-1.5 rounded-full bg-primary" />
-            Demo workspace <span className="opacity-40">/</span> All amounts are sample data
-          </span>
-        </footer>
+              </TooltipTrigger>
+              <TooltipContent>{collapsed ? 'Expand sidebar' : 'Collapse sidebar'} (Ctrl B)</TooltipContent>
+            </Tooltip>
+            <div className="ml-1 flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-sm">
+              <span className="size-2.5 shrink-0 rounded-full bg-[var(--gold)] ring-4 ring-[var(--gold)]/15" aria-hidden="true" />
+              <span className="truncate font-semibold">Mergui Boss</span>
+              <span className="hidden text-muted-foreground sm:inline">/</span>
+              <span className="hidden truncate text-muted-foreground sm:inline">{current?.title ?? 'Workspace'}</span>
+            </div>
+
+            <div className="ml-auto flex items-center gap-1">
+              <BangkokClock className="hidden px-3 text-sm text-muted-foreground tabular-nums md:block" />
+              <Button variant="ghost" size="icon-sm" className="sm:hidden" aria-label="Search" onClick={() => setPaletteOpen(true)}>
+                <Search />
+              </Button>
+              <ThemeButton />
+              <span className="mx-2 hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
+              <AccountMenu />
+            </div>
+          </header>
+
+          <main id="main" className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+            <Suspense fallback={<PageSkeleton />}>
+              <Outlet />
+            </Suspense>
+          </main>
+        </div>
       </div>
-      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <DialogContent className="p-0 gap-0 overflow-hidden sm:max-w-lg" showCloseButton={false}>
-          <DialogHeader className="sr-only">
-            <DialogTitle>Search workspace</DialogTitle>
-            <DialogDescription>Navigate to a page or create a transaction.</DialogDescription>
-          </DialogHeader>
-          <Command>
-            <CommandInput placeholder="Search pages and actions…" />
-            <CommandList>
-              <CommandEmpty>No matching pages found.</CommandEmpty>
-              <CommandGroup heading="Quick actions">
-                <CommandItem onSelect={() => go('/transactions/new')}>
-                  <ArrowUpRight />
-                  Create transaction
-                </CommandItem>
-              </CommandGroup>
-              <CommandSeparator />
-              <CommandGroup heading="Pages">
-                {allNavigation.map((item) => (
-                  <CommandItem key={item.path} onSelect={() => go(item.path)}>
-                    <item.icon />
-                    {item.title}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-          <div className="flex justify-between border-t p-3 text-xs text-muted-foreground">
-            <span>↑ ↓ to navigate · Enter to open</span>
-            <span>Esc to close</span>
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>A home for your daily operations</DialogTitle>
-            <DialogDescription>
-              This is an interactive MBX admin template using fictional demo data.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 text-sm">
-            <p>
-              Use Transactions to create an exchange and preview its receipt. Filter the ledger,
-              explore Reports, and update exchange rates.
-            </p>
-            <p>
-              Press <kbd>Ctrl / ⌘ K</kbd> to jump to a page. Your theme, sidebar and density
-              preferences are saved on this browser.
-            </p>
-            <p className="text-muted-foreground">
-              Records and form changes are kept in memory and reset on refresh. No production
-              backend is connected.
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
+  )
+}
+
+function SidebarContent({
+  collapsed,
+  openSearch,
+}: {
+  collapsed: boolean
+  openSearch: () => void
+}) {
+  const staff = useStaff()
+  const { folded, toggleGroup } = usePreferences()
+  const visible = (item: NavItem) => !item.requires || staff.permissions[item.requires]
+  return (
+    <div className="flex h-full flex-col bg-[var(--sidebar)] text-[#d7e6dc]">
+      <div className={cn('flex h-14 shrink-0 items-center gap-2.5 px-5', collapsed && 'justify-center px-0')}>
+        <span className="brand-symbol origin-center scale-[0.8]" aria-hidden="true">
+          m<span>↗</span>
+        </span>
+        {!collapsed && (
+          <span className="grid leading-tight">
+            <strong className="text-[15px] font-extrabold tracking-tight text-white">
+              MBX <span className="font-normal opacity-50">/</span> Ledger
+            </strong>
+            <span className="text-[11px] text-[#8fb19e]">Mergui Boss Money Exchange</span>
+          </span>
+        )}
+      </div>
+
+      <div className={cn('grid gap-2 px-4 pb-3', collapsed && 'px-3')}>
+        <SidebarTooltip label="Search (Ctrl K)" show={collapsed}>
+          <button
+            type="button"
+            onClick={openSearch}
+            className={cn(
+              'flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.05] px-3 text-sm text-[#a9c6b5] transition-colors hover:bg-white/[0.08] hover:text-white',
+              collapsed && 'justify-center px-0',
+            )}
+          >
+            <Search className="size-4" aria-hidden="true" />
+            {collapsed ? (
+              <span className="sr-only">Search</span>
+            ) : (
+              <>
+                Search…
+                <kbd className="ml-auto border-white/15 bg-white/[0.06] text-[#a9c6b5]">Ctrl K</kbd>
+              </>
+            )}
+          </button>
+        </SidebarTooltip>
+        <SidebarTooltip label="New deal (F2)" show={collapsed}>
+          <NavLink
+            to="/desk"
+            className={cn(
+              'flex h-10 items-center gap-2 rounded-lg bg-[var(--gold)] px-3 text-sm font-bold text-[#17311f] shadow-[0_6px_20px_-8px_#fdb600] transition hover:brightness-105 active:scale-[0.98]',
+              collapsed && 'justify-center px-0',
+            )}
+          >
+            <Zap className="size-4" aria-hidden="true" />
+            {collapsed ? (
+              <span className="sr-only">New deal</span>
+            ) : (
+              <>
+                New deal
+                <kbd className="ml-auto border-[#17311f]/20 bg-white/30 text-[10px] text-[#17311f]">F2</kbd>
+              </>
+            )}
+          </NavLink>
+        </SidebarTooltip>
+      </div>
+
+      <nav
+        className="flex-1 overflow-y-auto px-3 pb-4 [scrollbar-color:#ffffff20_transparent] [scrollbar-width:thin]"
+        aria-label="Pages"
+      >
+        {navigation.map((group) => {
+          const items = group.items.filter(visible)
+          if (!items.length) return null
+          return (
+            <div key={group.label} className="mb-3">
+              {collapsed ? (
+                <div className="mx-auto mb-2 h-px w-6 bg-white/10" aria-hidden="true" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.label)}
+                  aria-expanded={!folded.includes(group.label)}
+                  className="flex w-full items-center justify-between rounded-md px-3 py-1 text-[11px] font-semibold tracking-[0.08em] text-[#6f9581] uppercase transition-colors hover:text-[#a9c6b5]"
+                >
+                  {group.label}
+                  <ChevronDown
+                    className={cn('size-3.5 transition-transform', folded.includes(group.label) && '-rotate-90')}
+                    aria-hidden="true"
+                  />
+                </button>
+              )}
+              <ul className={cn('grid gap-0.5', !collapsed && folded.includes(group.label) && 'hidden')}>
+                {items.map((item) => (
+                  <li key={item.path}>
+                    <SidebarTooltip label={item.title} show={collapsed}>
+                      <NavLink
+                        to={item.path}
+                        end={item.path === '/'}
+                        className={({ isActive }) =>
+                          cn(
+                            'group flex h-9 items-center gap-3 rounded-lg px-3 text-[14px] text-[#b9d0c3] transition-colors hover:bg-white/[0.06] hover:text-white',
+                            collapsed && 'justify-center px-0',
+                            isActive && 'bg-white/[0.1] font-semibold text-white shadow-[inset_0_0_0_1px_#ffffff10]',
+                          )
+                        }
+                      >
+                        {({ isActive }) => (
+                          <>
+                            <item.icon
+                              className={cn('size-[18px] shrink-0', isActive ? 'text-[var(--gold)]' : 'opacity-80 group-hover:opacity-100')}
+                              aria-hidden="true"
+                            />
+                            {collapsed ? <span className="sr-only">{item.title}</span> : item.title}
+                          </>
+                        )}
+                      </NavLink>
+                    </SidebarTooltip>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        })}
+      </nav>
+
+      <div className={cn('border-t border-white/10 p-3', collapsed && 'px-2')}>
+        <AccountMenu card collapsed={collapsed} />
+      </div>
+    </div>
+  )
+}
+
+function SidebarTooltip({ label, show, children }: { label: string; show: boolean; children: ReactElement }) {
+  if (!show) return children
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function ThemeButton() {
+  const { theme, toggleTheme } = usePreferences()
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon-sm" onClick={toggleTheme} aria-label="Toggle dark mode">
+          {theme === 'light' ? <Moon /> : <Sun />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{theme === 'light' ? 'Dark mode' : 'Light mode'}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function Avatar({ name, photo, size = 'size-9' }: { name: string; photo?: string | null; size?: string }) {
+  return photo && !photo.endsWith('user2.png') ? (
+    <img src={photo} alt="" className={cn(size, 'shrink-0 rounded-full object-cover ring-2 ring-background')} />
+  ) : (
+    <span className={cn(size, 'grid shrink-0 place-items-center rounded-full bg-secondary text-xs font-extrabold text-primary ring-2 ring-background')}>
+      {initials(name)}
+    </span>
+  )
+}
+
+function AccountMenu({ card = false, collapsed = false }: { card?: boolean; collapsed?: boolean }) {
+  const { user } = useStaff()
+  const signOut = useSignOut()
+  const navigate = useNavigate()
+  const { density, setDensity } = usePreferences()
+  const role = user.roles?.map((r) => r.name).join(', ') || 'Staff'
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(
+          'flex items-center gap-3 rounded-full text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40',
+          card && 'w-full rounded-xl border border-white/10 bg-white/[0.05] p-2.5 hover:bg-white/[0.08]',
+          card && collapsed && 'justify-center p-1.5',
+        )}
+        aria-label="Account menu"
+      >
+        <Avatar name={user.name} photo={user.photo_url} />
+        {card && !collapsed && (
+          <>
+            <span className="min-w-0 flex-1">
+              <strong className="block truncate text-sm font-semibold text-white">{user.name}</strong>
+              <small className="block truncate text-xs text-[#8fb19e] capitalize">{role}</small>
+            </span>
+            <ChevronsUpDown className="size-4 text-[#8fb19e]" aria-hidden="true" />
+          </>
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={card ? 'start' : 'end'} side={card ? 'top' : 'bottom'} className="w-60">
+        <DropdownMenuLabel className="flex items-center gap-3">
+          <Avatar name={user.name} photo={user.photo_url} size="size-8" />
+          <span className="min-w-0">
+            <span className="block truncate">{user.name}</span>
+            <span className="block truncate text-xs font-normal text-muted-foreground">{user.email}</span>
+          </span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => navigate('/profile')}>
+          <UserRound /> My profile
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}>
+          <Rows3 /> {density === 'compact' ? 'Comfortable rows' : 'Compact rows'}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled={signOut.isPending} onSelect={() => signOut.mutate()} className="text-destructive focus:text-destructive">
+          <LogOut /> Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

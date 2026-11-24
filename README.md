@@ -1,10 +1,18 @@
 # MBX Ledger — Web Frontend
 
-Independent, interactive MBX admin template built with React, TypeScript, Vite and shadcn/ui. Forest-green/gold branding, medium-rounded surfaces, readable compact tables, responsive navigation and dark mode.
+MBX staff admin built with React, TypeScript, Vite and shadcn/ui on the Laravel `/api/v1` API. Forest-green/gold branding, responsive navigation and dark mode. There is no demo mode: every screen reads and writes real API data.
+
+> **Redesign in progress** (branch `redesign/live-admin`). New: app shell, command palette, full-screen **Deal desk** (`/desk`, F2). Screens not redesigned yet still render from `src/app/live-workspace.tsx`. The list below describes the earlier demo template and is being replaced screen by screen.
 
 ## Run locally
 
-Use Node **22.12+** (tested on Node 24.12) and npm.
+Use Node **22.12+** (tested on Node 24.12) and npm. Start the API first (from the workspace root):
+
+```powershell
+php .\mbx_web_backend\artisan serve --host=127.0.0.1 --port=8000
+```
+
+Then the admin:
 
 ```powershell
 cd mbx_web_frontend
@@ -12,9 +20,9 @@ npm ci
 npm run dev
 ```
 
-Open **http://127.0.0.1:5174**. `npm run build` creates `dist/`; `npm run preview` serves the build locally.
+Open **http://localhost:3000** (not 127.0.0.1) and sign in with a staff account. Vite forwards `/api` and `/sanctum` to Laravel. Sign-in uses Sanctum's cookie session, which Laravel only grants to origins listed in the backend's `SANCTUM_STATEFUL_DOMAINS` (`localhost:3000` locally). Any other origin gets “Cookie sign-in works only from the admin portal”. For sample data, run the backend's development seeder.
 
-This is **demo mode**, with 840 fictional transactions and 24 fictional customers. All record changes live in memory and reset when the page reloads. Theme, density and sidebar preferences are saved locally. No production API requests are made. The existing backend, mobile app and customer site are separate and unchanged.
+`npm run build` creates `dist/`; `npm run preview` serves the build on the same origin with the same proxy. In production, serve the admin and route `/api` and `/sanctum` to Laravel on the same site over HTTPS, and list the admin hostname in `SANCTUM_STATEFUL_DOMAINS`.
 
 ## Screens
 

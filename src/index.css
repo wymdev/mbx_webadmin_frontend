@@ -1,3 +1,35 @@
+@media print {
+  body:has(.transaction-print) {
+    overflow: visible !important;
+  }
+
+  body:has(.transaction-print) * {
+    visibility: hidden;
+  }
+
+  body:has(.transaction-print) .transaction-print,
+  body:has(.transaction-print) .transaction-print * {
+    visibility: visible;
+  }
+
+  body:has(.transaction-print) [role='dialog']:has(.transaction-print) {
+    position: absolute;
+    inset: 0;
+    transform: none;
+    translate: none;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+  }
+
+  body:has(.transaction-print) .transaction-print {
+    position: absolute;
+    inset: 0 0 auto;
+    background: white;
+    color: black;
+  }
+}
 @import '@fontsource/manrope/latin-400.css';
 @import '@fontsource/manrope/latin-500.css';
 @import '@fontsource/manrope/latin-600.css';
@@ -19,7 +51,8 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
-  --color-card-foreground: var(--foreground);
+  --color-card-foreground: var(--card-foreground);
+  --color-surface: var(--surface);
   --color-popover: var(--card);
   --color-popover-foreground: var(--foreground);
   --color-primary: var(--primary);
@@ -40,9 +73,12 @@
   --radius-xl: 1rem;
 }
 :root {
+  /* Original MBX palette. The dark green sidebar also frames the inset content panel. */
   --background: #f7f9f8;
   --foreground: #1b2e27;
   --card: #ffffff;
+  --card-foreground: #1b2e27;
+  --card-header: #fafcfb;
   --primary: #176649;
   --primary-foreground: #ffffff;
   --secondary: #edf3ef;
@@ -51,7 +87,19 @@
   --accent: #eaf1ed;
   --border: #e3e9e5;
   --sidebar: #0b2921;
+  --surface: var(--sidebar);
   --gold: #fdb600;
+  /* Chart slots, validated (dataviz validate_palette.js) on the card surface. Slot order is fixed:
+     1 = Buy / primary series, 2 = Sell / second series. Gold and pink are below 3:1 here, so charts
+     always carry visible values or a table view. */
+  --chart-1: #0f8052;
+  --chart-2: #c48a1d;
+  --chart-3: #2a78d6;
+  --chart-4: #e87ba4;
+  --chart-grid: #e9eeeb;
+  --chart-axis: #8a958f;
+  --delta-up: #006300;
+  --delta-down: #b3261e;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -60,6 +108,8 @@
   --background: #101b17;
   --foreground: #e7eee9;
   --card: #16231d;
+  --card-foreground: #e7eee9;
+  --card-header: #19281f;
   --primary: #77c9a5;
   --primary-foreground: #0b2921;
   --secondary: #23372c;
@@ -68,6 +118,15 @@
   --accent: #253a2e;
   --border: #2c3d32;
   --sidebar: #081d16;
+  --surface: var(--sidebar);
+  --chart-1: #25875f;
+  --chart-2: #b98424;
+  --chart-3: #3987e5;
+  --chart-4: #d55181;
+  --chart-grid: #22332a;
+  --chart-axis: #7f9488;
+  --delta-up: #4cc28a;
+  --delta-down: #f08a80;
 }
 @layer base {
   * {
