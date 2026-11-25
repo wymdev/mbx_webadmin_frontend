@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn, formatDate, formatMoney, initials } from '@/lib/utils'
 import { useCustomerLookup, useCustomerProfile, useNrcTownships, type ReferenceData } from './api'
+import { Combobox } from '@/components/ui/combobox'
 
 export type NewCustomer = {
   name: string
@@ -369,46 +370,40 @@ function NewCustomerForm({
           <div className="grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] gap-2">
             <label className="grid gap-1 text-xs font-semibold">
               State *
-              <select
+              <Combobox
+                aria-label="NRC state"
+                placeholder="–"
+                searchPlaceholder="State no."
+                contentClassName="min-w-28"
                 value={draft.nrc_code}
-                onChange={(event) => set({ nrc_code: event.target.value, nrc_township: '' })}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
+                onChange={(next) => set({ nrc_code: next, nrc_township: '' })}
                 aria-invalid={!!err('nrc_code')}
-              >
-                <option value="">–</option>
-                {reference.nrc_codes.map((code) => (
-                  <option key={code}>{code}</option>
-                ))}
-              </select>
+                options={reference.nrc_codes.map((code) => ({ value: code, label: code }))}
+              />
             </label>
             <label className="grid gap-1 text-xs font-semibold">
               Township *
-              <select
+              <Combobox
+                aria-label="NRC township"
+                placeholder={townships.isFetching ? 'Loading…' : 'Select'}
+                searchPlaceholder="Search township"
+                contentClassName="min-w-56"
                 value={draft.nrc_township}
-                onChange={(event) => set({ nrc_township: event.target.value })}
-                className="h-9 min-w-0 rounded-md border bg-background px-2 text-sm"
+                onChange={(next) => set({ nrc_township: next })}
                 disabled={!draft.nrc_code}
                 aria-invalid={!!err('nrc_township')}
-              >
-                <option value="">{townships.isFetching ? 'Loading…' : 'Select'}</option>
-                {townships.data?.map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-              </select>
+                options={(townships.data ?? []).map((name) => ({ value: name, label: name }))}
+              />
             </label>
             <label className="grid gap-1 text-xs font-semibold">
               Type *
-              <select
+              <Combobox
+                aria-label="NRC type"
+                contentClassName="min-w-28"
                 value={draft.nrc_type}
-                onChange={(event) => set({ nrc_type: event.target.value })}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-              >
-                {NRC_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    ({type})
-                  </option>
-                ))}
-              </select>
+                onChange={(next) => set({ nrc_type: next })}
+                options={NRC_TYPES.map((type) => ({ value: type, label: `(${type})` }))}
+              />
             </label>
           </div>
           {field('NRC number *', 'nrc_number', { inputMode: 'numeric', maxLength: 8, placeholder: '123456' })}

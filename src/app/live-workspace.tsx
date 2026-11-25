@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
 import Download from 'lucide-react/icons/download'
@@ -20,6 +20,8 @@ import { ReceiptView } from '@/features/receipts/receipt-view'
 import { useStaff, type Staff } from '@/features/auth/session'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Combobox } from '@/components/ui/combobox'
+import { DatePicker, DateRangePicker } from '@/components/ui/date-picker'
 import { QueryState } from '@/components/query-state'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { bangkokDate, calculateTotal } from '@/domain/money'
@@ -97,7 +99,7 @@ function Overview() {
   const query = useLiveQuery(['dashboard', date], (signal) => read('dashboard', dashboard, signal, { date }))
   return (
     <>
-      <label className="mb-5 inline-grid gap-1">Bangkok business day<Input type="date" value={date} onChange={(event) => event.target.value && setDate(event.target.value)} /></label>
+      <div className="mb-5 inline-grid gap-1">Bangkok business day<DatePicker className="w-56" aria-label="Bangkok business day" clearable={false} value={date} onChange={(next) => next && setDate(next)} /></div>
       <QueryState loading={query.isPending} error={query.error} retry={query.refetch}>
         {query.data && <dl className="grid grid-cols-2 gap-4 border-y py-4 sm:grid-cols-4">
           {Object.entries({ Transactions: query.data.totals.transactions, Buys: query.data.totals.buy, Sells: query.data.totals.sell, Customers: query.data.all_time.customers }).map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="text-2xl font-semibold tabular-nums">{value.toLocaleString()}</dd></div>)}
@@ -123,14 +125,7 @@ function Reports() {
   })
   return <section className="panel overflow-hidden">
     <div className="flex flex-wrap items-end gap-3 border-b px-5 py-4">
-      <label className="grid gap-1">From (Bangkok)<Input type="date" value={from} onChange={(event) => {
-        const next = event.target.value
-        if (next) { setFrom(next); if (next > to) setTo(next) }
-      }} /></label>
-      <label className="grid gap-1">To (Bangkok)<Input type="date" value={to} min={from} onChange={(event) => {
-        const next = event.target.value
-        if (next && next >= from) setTo(next)
-      }} /></label>
+      <div className="grid gap-1">Period (Bangkok)<DateRangePicker className="w-80 max-w-full" aria-label="Report period" value={{ from, to }} onChange={(next) => { setFrom(next.from); setTo(next.to) }} /></div>
       <Button variant="outline" disabled={!query.data || download.isPending} onClick={() => download.mutate()}><Download /> {download.isPending ? 'Exporting…' : 'Export to Excel'}</Button>
     </div>
     {download.error && <p role="alert" className="border-b px-5 py-3 text-sm text-destructive">{download.error.message}</p>}
@@ -514,24 +509,28 @@ function CreateTransaction({ close }: { close: () => void }) {
     },
     meta: { success: 'Transaction saved' },
   })
-  const select = (label: string, name: string, choices: { value: string; label: string }[], required = false) => <label className="grid gap-1">{label}<select className="border-input bg-background h-9 rounded-md border px-2" name={name} required={required} defaultValue=""><option value="">{required ? 'Select' : 'None'}</option>{choices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></label>
+  const formRef = useRef<HTMLFormElement>(null)
+  const recalculate = () => {
+    if (!formRef.current) return
+    const form = new FormData(formRef.current)
+    try {
+      const operation = form.get('operation')
+      const currency = form.get('to_currency')
+      if (!currency || currency === form.get('from_currency') || (operation !== 'multiply' && operation !== 'divide')) return setQuote('')
+      setQuote(`${calculateTotal(String(form.get('amount')), String(form.get('exchange_rate')), operation)} ${currency}`)
+    } catch {
+      setQuote('')
+    }
+  }
+  // The combobox writes its hidden input on the next render; recalculate after that.
+  const select = (label: string, name: string, choices: { value: string; label: string }[], required = false) => <label className="grid gap-1">{label}<Combobox name={name} required={required} aria-label={label} placeholder={required ? 'Select' : 'None'} emptyLabel={required ? undefined : 'None'} options={choices} onChange={() => requestAnimationFrame(recalculate)} /></label>
   const choices = (values: string[]) => values.map((value) => ({ value, label: value }))
   const field = (label: string, name: string, required = false, inputMode?: 'decimal') => <label className="grid gap-1">{label}<Input name={name} required={required} inputMode={inputMode} /></label>
   return <Dialog open onOpenChange={(open) => { if (!open && !save.isPending) close() }}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
     <DialogTitle>New transaction</DialogTitle>
     <DialogDescription>Record an exchange.</DialogDescription>
     <QueryState loading={options.isPending} error={options.error} retry={options.refetch}>
-      {options.data && <form className="grid gap-3" onChange={(event) => {
-        const form = new FormData(event.currentTarget)
-        try {
-          const operation = form.get('operation')
-          const currency = form.get('to_currency')
-          if (!currency || currency === form.get('from_currency') || (operation !== 'multiply' && operation !== 'divide')) return setQuote('')
-          setQuote(`${calculateTotal(String(form.get('amount')), String(form.get('exchange_rate')), operation)} ${currency}`)
-        } catch {
-          setQuote('')
-        }
-      }} onSubmit={(event) => { event.preventDefault(); if (!save.isPending) save.mutate(new FormData(event.currentTarget)) }}>
+      {options.data && <form ref={formRef} className="grid gap-3" onChange={recalculate} onSubmit={(event) => { event.preventDefault(); if (!save.isPending) save.mutate(new FormData(event.currentTarget)) }}>
         <input type="hidden" name="exchange_type" value={exchangeType} />
         <div role="group" aria-label="Exchange type" className="grid grid-cols-2 gap-2">
           {(['Buy', 'Sell'] as const).map((type) => <Button key={type} type="button" size="lg" aria-pressed={exchangeType === type} variant={exchangeType === type ? 'default' : 'outline'} onClick={() => setExchangeType(type)}>{type}</Button>)}
@@ -545,10 +544,10 @@ function CreateTransaction({ close }: { close: () => void }) {
           {select('Customer source', 'customer_source_id', options.data.customer_sources.map(({ id, name }) => ({ value: String(id), label: name })))}
         </div>
         {field('Description', 'description')}
-        <label className="grid gap-1">Customer<select className="border-input bg-background h-9 rounded-md border px-2" value={customerMode} onChange={(event) => setCustomerMode(event.target.value)}><option value="existing">Existing customer</option><option value="new">New customer</option></select></label>
+        <label className="grid gap-1">Customer<Combobox aria-label="Customer" options={[{ value: 'existing', label: 'Existing customer' }, { value: 'new', label: 'New customer' }]} value={customerMode} onChange={setCustomerMode} /></label>
         {customerMode === 'existing' ? field('Customer ID', 'customer_id', true) : <div className="grid gap-3 sm:grid-cols-2">
           {field('Name', 'name', true)}{field('Country code', 'country_code')}{field('Phone', 'phone')}
-          <label className="grid gap-1">ID type<select className="border-input bg-background h-9 rounded-md border px-2" value={idType} onChange={(event) => setIdType(event.target.value)}><option value="passport">Passport</option><option value="nrc">NRC</option></select></label>
+          <label className="grid gap-1">ID type<Combobox aria-label="ID type" options={[{ value: 'passport', label: 'Passport' }, { value: 'nrc', label: 'NRC' }]} value={idType} onChange={setIdType} /></label>
           {idType === 'passport' ? <>{field('Passport', 'passport', true)}{field('Nationality', 'nationality', true)}</> : <>{field('NRC code', 'nrc_code', true)}{field('NRC township', 'nrc_township', true)}{field('NRC type', 'nrc_type', true)}{field('NRC number', 'nrc_number', true)}</>}
         </div>}
         {save.error && <p role="alert" className="text-destructive">{save.error.message}</p>}
@@ -723,9 +722,8 @@ function Profile({ user }: { user: Staff['user'] }) {
 function InvoiceSelect({ label, name, value, choices, emptyLabel = 'None', labels = {} }: {
   label: string; name: string; value: string; choices: string[]; emptyLabel?: string; labels?: Record<string, string>
 }) {
-  return <label className="grid gap-1">{label}<select className="border-input bg-background h-9 rounded-md border px-2" name={name} defaultValue={value}>
-    {[...new Set([...choices, value])].map((option) => <option key={option} value={option}>{option ? labels[option] ?? option : emptyLabel}</option>)}
-  </select></label>
+  return <label className="grid gap-1">{label}<Combobox name={name} aria-label={label} defaultValue={value}
+    options={[...new Set([...choices, value])].map((option) => ({ value: option, label: option ? labels[option] ?? option : emptyLabel }))} /></label>
 }
 
 function LookupEntry({ endpoint, entry, close }: { endpoint: string; entry: { id?: number; name: string; deleting?: boolean }; close: () => void }) {
@@ -829,7 +827,7 @@ function ManagementEdit({ endpoint, row, deleting, close }: { endpoint: 'rates' 
           <label className="grid gap-1">Name<Input name="name" defaultValue={String(row.name ?? '')} minLength={2} required /></label>
           <label className="grid gap-1">Email<Input name="email" type="email" defaultValue={String(row.email ?? '')} required /></label>
           <label className="grid gap-1">{creating ? 'Password' : 'New password (optional)'}<Input name="password" type="password" autoComplete="new-password" minLength={10} maxLength={128} required={creating} /></label>
-          <label className="grid gap-1">Role<select name="role" className="h-9 rounded-md border bg-background px-2" defaultValue="" required={creating}><option value="">{creating ? 'Select role' : 'Keep current roles'}</option>{options.data?.roles.filter(({ assignable }) => assignable).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+          <label className="grid gap-1">Role<Combobox name="role" aria-label="Role" required={creating} placeholder="Select role" emptyLabel={creating ? undefined : 'Keep current roles'} options={(options.data?.roles ?? []).filter(({ assignable }) => assignable).map((role) => ({ value: String(role.id), label: role.name }))} /></label>
         </>}
         {error && <p role="alert" className="text-destructive">{error}</p>}
         <Button disabled={pending} variant={deleting ? 'destructive' : 'default'}>{deleting ? 'Delete' : 'Save'}</Button>

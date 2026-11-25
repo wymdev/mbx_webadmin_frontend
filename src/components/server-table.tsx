@@ -16,6 +16,8 @@ import { ExcelMenu } from '@/components/excel-menu'
 import { QueryState } from '@/components/query-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Combobox } from '@/components/ui/combobox'
+import { DatePicker } from '@/components/ui/date-picker'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -322,23 +324,21 @@ export function ServerTable({
               {pagination?.from ? `Showing ${pagination.from.toLocaleString()}–${(pagination.to ?? pagination.from).toLocaleString()} of ${total.toLocaleString()}` : 'No rows'}
             </span>
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2 text-muted-foreground">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 Rows
-                <select
-                  className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
-                  value={pageSize}
-                  onChange={(event) => {
-                    setPageSize(Number(event.target.value))
+                <Combobox
+                  size="sm"
+                  aria-label="Rows per page"
+                  className="w-20"
+                  searchable={false}
+                  options={PAGE_SIZES.map((size) => ({ value: String(size), label: String(size) }))}
+                  value={String(pageSize)}
+                  onChange={(next) => {
+                    setPageSize(Number(next))
                     update({})
                   }}
-                >
-                  {PAGE_SIZES.map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                />
+              </div>
               <nav className="flex items-center gap-1" aria-label="Pages">
                 <Button variant="outline" size="icon-sm" disabled={page <= 1} onClick={() => update({ page: String(page - 1) }, true)} aria-label="Previous page">
                   <ChevronLeft />
@@ -430,24 +430,25 @@ function ColumnsMenu({ columns, shown, toggle, reset }: { columns: ServerColumn[
 function FilterControl({ filter, value, apply }: { filter: ServerFilter; value: string; apply: (value: string) => void }) {
   if (filter.type === 'select')
     return (
-      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-        {filter.label}
-        <select className="h-9 min-w-32 rounded-md border border-input bg-background px-2 text-sm text-foreground" value={value} onChange={(event) => apply(event.target.value)}>
-          <option value="">All</option>
-          {filter.options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="grid gap-1 text-xs font-medium text-muted-foreground">
+        <span>{filter.label}</span>
+        <Combobox
+          className="min-w-36"
+          aria-label={filter.label}
+          emptyLabel="All"
+          searchPlaceholder={`Search ${filter.label.toLowerCase()}`}
+          options={filter.options}
+          value={value}
+          onChange={apply}
+        />
+      </div>
     )
   if (filter.type === 'date')
     return (
-      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-        {filter.label}
-        <Input type="date" className="h-9 w-40 text-sm text-foreground" value={value} onChange={(event) => apply(event.target.value)} />
-      </label>
+      <div className="grid gap-1 text-xs font-medium text-muted-foreground">
+        <span>{filter.label}</span>
+        <DatePicker className="w-48" aria-label={filter.label} placeholder="Any day" value={value} onChange={apply} />
+      </div>
     )
   return <SearchFilter filter={filter} value={value} apply={apply} />
 }
