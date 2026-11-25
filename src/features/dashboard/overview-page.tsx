@@ -28,6 +28,8 @@ import { cn, formatDate, formatMoney, formatRate, timeAgo } from '@/lib/utils'
 import { useNow } from '@/lib/use-now'
 import { useRates } from '@/features/desk/api'
 import { useAnalytics, useRateChart, type Analytics, type Breakdown, type Kpis } from './api'
+import { Combobox } from '@/components/ui/combobox'
+import { DateRangePicker } from '@/components/ui/date-picker'
 
 // ---------- dates & numbers ----------
 
@@ -108,42 +110,16 @@ export default function OverviewPage() {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1.5 rounded-xl border bg-card px-2 py-1 shadow-xs">
-          <label className="sr-only" htmlFor="period-from">
-            From
-          </label>
-          <input
-            id="period-from"
-            type="date"
-            value={range.from}
-            max={range.to}
-            onChange={(event) => {
-              const from = event.target.value
-              if (!from) return
-              setPreset('custom')
-              setRange((r) => ({ from, to: from > r.to ? from : r.to }))
-            }}
-            className="h-7 bg-transparent text-sm outline-none"
-          />
-          <span className="text-muted-foreground">–</span>
-          <label className="sr-only" htmlFor="period-to">
-            To
-          </label>
-          <input
-            id="period-to"
-            type="date"
-            value={range.to}
-            min={range.from}
-            max={today}
-            onChange={(event) => {
-              const to = event.target.value
-              if (!to || to < range.from) return
-              setPreset('custom')
-              setRange((r) => ({ ...r, to }))
-            }}
-            className="h-7 bg-transparent text-sm outline-none"
-          />
-        </div>
+        <DateRangePicker
+          className="w-72 max-w-full"
+          aria-label="Custom period"
+          value={range}
+          max={today}
+          onChange={(next) => {
+            setPreset('custom')
+            setRange(next)
+          }}
+        />
         {data && (
           <span className="text-xs text-muted-foreground">
             Compared with {short(data.previous_period.from)} – {short(data.previous_period.to)}
@@ -432,18 +408,16 @@ function RateTrend({ from, to }: { from: string; to: string }) {
           <CardDescription>MMK per 1 {rate?.currency ?? 'unit'} · daily close</CardDescription>
         </div>
         <CardAction>
-          <select
+          <Combobox
+            size="sm"
             aria-label="Currency"
-            value={rate?.id ?? ''}
-            onChange={(event) => setPicked(Number(event.target.value))}
-            className="h-8 rounded-lg border bg-background px-2 text-sm font-semibold"
-          >
-            {rates.data?.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.currency}
-              </option>
-            ))}
-          </select>
+            className="w-28"
+            triggerClassName="font-semibold"
+            searchPlaceholder="Search currency"
+            value={rate ? String(rate.id) : ''}
+            onChange={(next) => setPicked(Number(next))}
+            options={(rates.data ?? []).map((r) => ({ value: String(r.id), label: r.currency }))}
+          />
           <ViewToggle table={table} onChange={setTable} />
         </CardAction>
       </CardHeader>

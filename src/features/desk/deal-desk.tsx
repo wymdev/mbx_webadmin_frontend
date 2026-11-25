@@ -43,6 +43,7 @@ import {
 } from './api'
 import { CustomerPanel, type CustomerChoice } from './customer-panel'
 import { SavedDeal } from './saved-deal'
+import { Combobox } from '@/components/ui/combobox'
 
 type Operation = 'multiply' | 'divide'
 type Deal = {
@@ -828,20 +829,17 @@ function CurrencyPicker({
           </button>
         ))}
         {rest.length > 0 && (
-          <select
+          <Combobox
             aria-label={`${label}: other currency`}
+            placeholder="More…"
+            searchPlaceholder="Search currency"
+            className="w-28"
+            contentClassName="min-w-40"
+            triggerClassName={cn('h-10 rounded-lg font-bold', rest.includes(value) && 'border-primary bg-primary text-primary-foreground hover:border-primary')}
             value={rest.includes(value) ? value : ''}
-            onChange={(event) => event.target.value && onChange(event.target.value)}
-            className={cn(
-              'h-10 rounded-lg border bg-background px-2 text-sm font-bold',
-              rest.includes(value) && 'border-primary bg-primary text-primary-foreground',
-            )}
-          >
-            <option value="">More…</option>
-            {rest.map((currency) => (
-              <option key={currency}>{currency}</option>
-            ))}
-          </select>
+            onChange={(next) => next && onChange(next)}
+            options={rest.map((currency) => ({ value: currency, label: currency }))}
+          />
         )}
       </div>
     </div>
