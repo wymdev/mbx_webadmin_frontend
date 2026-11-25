@@ -8,7 +8,10 @@ import RotateCcw from 'lucide-react/icons/rotate-ccw'
 import Pencil from 'lucide-react/icons/pencil'
 import Plus from 'lucide-react/icons/plus'
 import { z } from 'zod'
-import { apiClient, refreshCsrf } from '@/services/api'
+import { toast } from 'sonner'
+import { apiClient, refreshCsrf, UPLOAD_TIMEOUT } from '@/services/api'
+import { prepareImageField } from '@/lib/image'
+import { cn } from '@/lib/utils'
 import { useStaff, type Staff } from '@/features/auth/session'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -122,9 +125,9 @@ function Reports() {
     link.download = `mbx-transactions-${from}-${to}.csv`
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-  } })
-  return <>
-    <div className="mb-4 flex flex-wrap items-end gap-3">
+  }, meta: { success: 'CSV export downloaded' } })
+  return <section className="panel overflow-hidden">
+    <div className="flex flex-wrap items-end gap-3 border-b px-5 py-4">
       <label className="grid gap-1">From (Bangkok)<Input type="date" value={from} onChange={(event) => {
         const next = event.target.value
         if (next) { setFrom(next); if (next > to) setTo(next) }
@@ -135,18 +138,55 @@ function Reports() {
       }} /></label>
       <Button variant="outline" disabled={!query.data || download.isPending} onClick={() => download.mutate()}><Download /> Export CSV</Button>
     </div>
-    {download.error && <p role="alert" className="mb-3 text-destructive">{download.error.message}</p>}
+    {download.error && <p role="alert" className="border-b px-5 py-3 text-sm text-destructive">{download.error.message}</p>}
     <QueryState loading={query.isPending} error={query.error} retry={query.refetch}>
-      {query.data?.groups.length === 0 && <p>No transactions in this date range.</p>}
+      {query.data?.groups.length === 0 && <p className="empty-state text-sm text-muted-foreground">No transactions in this date range.</p>}
       {!!query.data?.groups.length && <div className="overflow-x-auto"><table className="w-full text-left text-sm">
-        <thead><tr>{['Currency pair', 'Type', 'Transactions', 'Amount', 'Total'].map((label) => <th scope="col" className="border-b px-3 py-2" key={label}>{label}</th>)}</tr></thead>
-        <tbody>{query.data.groups.map((group) => <tr key={JSON.stringify([group.from_currency, group.to_currency, group.exchange_type])}>
-          {[`${group.from_currency} → ${group.to_currency}`, group.exchange_type, group.count, group.amount_sum, group.total_sum].map((value, index) => <td key={index} className="whitespace-nowrap border-b px-3 py-2 tabular-nums">{value}</td>)}
+        <thead className="bg-[var(--card-header)] text-xs text-muted-foreground"><tr>{['Currency pair', 'Type', 'Transactions', 'Amount', 'Total'].map((label, index) => <th scope="col" className={cn('border-b px-5 py-3 font-semibold', index > 1 && 'text-right')} key={label}>{label}</th>)}</tr></thead>
+        <tbody>{query.data.groups.map((group) => <tr key={JSON.stringify([group.from_currency, group.to_currency, group.exchange_type])} className="transition-colors hover:bg-muted/60">
+          <td className="whitespace-nowrap border-b px-5 py-3 font-medium">{group.from_currency} → {group.to_currency}</td>
+          <td className="whitespace-nowrap border-b px-5 py-3"><Cell field="exchange_type" value={group.exchange_type} /></td>
+          {[String(group.count), group.amount_sum, group.total_sum].map((value, index) => <td key={index} className="whitespace-nowrap border-b px-5 py-3 text-right tabular-nums">{groupDigits(value)}</td>)}
         </tr>)}</tbody>
       </table></div>}
     </QueryState>
-  </>
+  </section>
 }
+const NUMERIC_FIELDS = new Set(['amount', 'total', 'buy', 'sell', 'transactions_count', 'seq'])
+const isNumeric = (field: string) => NUMERIC_FIELDS.has(field)
+
+const COLUMN_LABELS: Record<string, string> = {
+  transaction_id: 'Transaction ID', customer_id: 'Customer ID', exchange_type: 'Type',
+  from_currency: 'From', to_currency: 'To', created_at: 'Date (Bangkok)', deleted_at: 'Deleted (Bangkok)',
+  last_transaction_at: 'Last deal (Bangkok)', transactions_count: 'Deals', auditable_type: 'Record', auditable_id: 'Record ID',
+}
+const columnLabel = (field: string) => COLUMN_LABELS[field] ?? field.replaceAll('_', ' ')
+
+const bangkokDateTime = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+})
+
+/** "1234567.50" → "1,234,567.50". Works on the string, so no precision is lost. */
+function groupDigits(value: string) {
+  const match = /^(-?)(\d+)(\.\d+)?$/.exec(value)
+  return match ? `${match[1]}${match[2].replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${match[3] ?? ''}` : value
+}
+
+function Cell({ field, value }: { field: string; value: unknown }) {
+  if (typeof value !== 'string' && typeof value !== 'number') return <span className="text-muted-foreground">–</span>
+  const text = String(value)
+  if (field === 'exchange_type') {
+    return <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-semibold', text === 'Buy' ? 'bg-primary/10 text-primary' : 'bg-[var(--gold)]/15 text-[#8a5a00] dark:text-[var(--gold)]')}>{text}</span>
+  }
+  if (field.endsWith('_at')) {
+    const date = new Date(text)
+    return Number.isNaN(date.getTime()) ? text : <time dateTime={text}>{bangkokDateTime.format(date)}</time>
+  }
+  if (isNumeric(field)) return groupDigits(text)
+  if (field === 'transaction_id' || field === 'customer_id') return <span className="font-medium tabular-nums">{text}</span>
+  return text
+}
+
 function LedgerTable({ section, startCreating }: { section: (typeof sections)[number]; startCreating: boolean }) {
   const client = useQueryClient()
   const [rateHistory, setRateHistory] = useState<number | null>(null)
@@ -156,6 +196,7 @@ function LedgerTable({ section, startCreating }: { section: (typeof sections)[nu
       await apiClient.post('rates/reorder', { ids })
     },
     onSuccess: () => client.invalidateQueries({ queryKey: ['live', 'rates'] }),
+    meta: { success: 'Rate order updated' },
   })
   const [page, setPage] = useState(1)
   const [customerId, setCustomerId] = useState<string | null>(null)
@@ -171,24 +212,33 @@ function LedgerTable({ section, startCreating }: { section: (typeof sections)[nu
     const response = await apiClient.get(section.endpoint, { signal, params: paginated ? { page } : undefined })
     return list.parse(response.data)
   })
+  const rows = query.data?.data ?? []
   return (
     <QueryState loading={query.isPending} error={query.error} retry={query.refetch}>
-      {lookupList && <Button className="mb-4" onClick={() => setListEdit({ name: '' })}><Plus /> Add entry</Button>}
-      {managed && <Button className="mb-4" onClick={() => setManagement({ row: {} })}><Plus /> {section.endpoint === 'rates' ? 'Add rate' : 'Add staff account'}</Button>}
       {managed && management && <ManagementEdit endpoint={section.endpoint as 'rates' | 'users'} {...management} close={() => setManagement(null)} />}
       {rateHistory !== null && <RateHistory id={rateHistory} close={() => setRateHistory(null)} />}
-      {reorder.error && <p className="text-destructive" role="alert">{reorder.error.message}</p>}
       {listEdit && <LookupEntry endpoint={section.endpoint} entry={listEdit} close={() => setListEdit(null)} />}
-      {section.endpoint === 'transactions' && <Button className="mb-4" onClick={() => setCreating(true)}><Plus /> New transaction</Button>}
       {creating && <CreateTransaction close={() => setCreating(false)} />}
-      {query.data && <>
-        {query.data.data.length === 0 ? <p>No records found.</p> : <div className="overflow-x-auto">
+      {query.data && <section className="panel overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+          <div>
+            <h2 className="font-semibold">{section.title}</h2>
+            <p className="panel-subtitle">{rows.length ? `${rows.length.toLocaleString()} ${rows.length === 1 ? 'record' : 'records'}${paginated ? ` on page ${page}` : ''}` : 'Nothing here yet'}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {lookupList && <Button onClick={() => setListEdit({ name: '' })}><Plus /> Add entry</Button>}
+            {managed && <Button onClick={() => setManagement({ row: {} })}><Plus /> {section.endpoint === 'rates' ? 'Add rate' : 'Add staff account'}</Button>}
+            {section.endpoint === 'transactions' && <Button onClick={() => setCreating(true)}><Plus /> New transaction</Button>}
+          </div>
+        </div>
+        {reorder.error && <p className="border-b px-5 py-3 text-sm text-destructive" role="alert">{reorder.error.message}</p>}
+        {rows.length === 0 ? <p className="empty-state text-sm text-muted-foreground">No records found.</p> : <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left text-sm">
-            <thead><tr>{section.fields.map((field) => <th key={field} scope="col" className="border-b px-3 py-2 capitalize">{field.replaceAll('_', ' ')}</th>)}{hasActions && <th scope="col" className="border-b px-3 py-2">Actions</th>}</tr></thead>
-            <tbody>{query.data.data.map((row, index) => {
+            <thead className="bg-[var(--card-header)] text-xs text-muted-foreground"><tr>{section.fields.map((field) => <th key={field} scope="col" className={cn('whitespace-nowrap border-b px-5 py-3 font-semibold capitalize', isNumeric(field) && 'text-right')}>{columnLabel(field)}</th>)}{hasActions && <th scope="col" className="border-b px-5 py-3 text-right font-semibold">Actions</th>}</tr></thead>
+            <tbody>{rows.map((row, index) => {
               const id = row.id
-              return <tr key={String(id ?? row.customer_id ?? index)}>{section.fields.map((field) => <td key={field} className="whitespace-nowrap border-b px-3 py-2">{typeof row[field] === 'string' || typeof row[field] === 'number' ? String(row[field]) : '–'}</td>)}
-                {hasActions && <td className="whitespace-nowrap border-b px-3 py-2">
+              return <tr key={String(id ?? row.customer_id ?? index)} className="transition-colors hover:bg-muted/60">{section.fields.map((field) => <td key={field} className={cn('whitespace-nowrap border-b px-5 py-3', isNumeric(field) && 'text-right tabular-nums')}><Cell field={field} value={row[field]} /></td>)}
+                {hasActions && <td className="whitespace-nowrap border-b px-3 py-2 text-right">
                   {section.endpoint === 'customers' && typeof row.customer_id === 'string' && row.customer_id && <Button variant="ghost" size="sm" onClick={() => setCustomerId(String(row.customer_id))}><Pencil /> View / edit</Button>}
                   {section.endpoint !== 'customers' && typeof id === 'number' && (managed ? <>
                     {section.endpoint === 'rates' && <>
@@ -216,12 +266,14 @@ function LedgerTable({ section, startCreating }: { section: (typeof sections)[nu
             })}</tbody>
           </table>
         </div>}
-        {paginated && <div className="mt-4 flex items-center gap-3">
-          <Button variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</Button>
-          <span>Page {page}</span>
-          <Button variant="outline" disabled={!query.data.meta?.pagination.has_more} onClick={() => setPage(page + 1)}>Next</Button>
+        {paginated && <div className="flex items-center justify-between gap-3 px-5 py-3">
+          <span className="text-sm text-muted-foreground">Page {page}</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</Button>
+            <Button variant="outline" size="sm" disabled={!query.data.meta?.pagination.has_more} onClick={() => setPage(page + 1)}>Next</Button>
+          </div>
         </div>}
-      </>}
+      </section>}
       {customerId && <CustomerDetails key={customerId} id={customerId} close={() => setCustomerId(null)} />}
       {action?.kind === 'edit' ? <EditInvoice key={action.id} id={action.id} close={() => setAction(null)} saved={() => setAction({ id: action.id, kind: 'receipt' })} /> : action && <TransactionAction key={`${action.kind}:${action.id}`} id={action.id} kind={action.kind} staff={section.endpoint === 'users/trashed'} close={() => setAction(null)} />}
     </QueryState>
@@ -274,6 +326,7 @@ function CreateTransaction({ close }: { close: () => void }) {
       close()
       await client.invalidateQueries({ queryKey: ['live'] })
     },
+    meta: { success: 'Transaction saved' },
   })
   const select = (label: string, name: string, choices: { value: string; label: string }[], required = false) => <label className="grid gap-1">{label}<select className="border-input bg-background h-9 rounded-md border px-2" name={name} required={required} defaultValue=""><option value="">{required ? 'Select' : 'None'}</option>{choices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select></label>
   const choices = (values: string[]) => values.map((value) => ({ value, label: value }))
@@ -336,6 +389,7 @@ function EditInvoice({ id, close, saved }: { id: number; close: () => void; save
       await client.invalidateQueries({ queryKey: ['live'] })
       saved()
     },
+    meta: { success: 'Invoice updated' },
   })
   const original = query.data
   return <Dialog open onOpenChange={(open) => { if (!open && !save.isPending) close() }}>
@@ -401,6 +455,7 @@ function TransactionAction({ id, kind, staff = false, close }: { id: number; kin
       close()
       await client.invalidateQueries({ queryKey: ['live'] })
     },
+    meta: { success: kind === 'restore' ? (staff ? 'Staff account restored' : 'Transaction restored') : 'Transaction moved to trash' },
   })
   return <Dialog open onOpenChange={(open) => { if (!open && !mutation.isPending) close() }}>
     <DialogContent>
@@ -443,21 +498,29 @@ const receiptSettings = z.object({
   slips: z.array(z.object({ id: z.number(), name: z.string(), image_url: z.string().nullish(), active: z.boolean() })),
 })
 
+/** One receipt-settings write; `done` is the toast shown when it succeeds. */
+type ReceiptChange = { path: string; method: 'post' | 'put' | 'delete'; data?: object; done: string }
+
 function ReceiptSettings() {
   const client = useQueryClient()
   const query = useLiveQuery(['receipt-settings'], (signal) => read('receipt-settings', receiptSettings, signal))
   const [editing, setEditing] = useState<number | 'new' | null>(null)
   const [removing, setRemoving] = useState<number | null>(null)
   const save = useMutation({
-    mutationFn: async ({ path, method, data }: { path: string; method: 'post' | 'put' | 'delete'; data?: object }) => {
+    mutationFn: async ({ path, method, data }: ReceiptChange) => {
+      if (data instanceof FormData) {
+        await prepareImageField(data, 'image', { maxSide: 1600 })
+        await prepareImageField(data, 'logo', { maxSide: 600, keepAlpha: true })
+      }
       await refreshCsrf()
-      await apiClient.request({ url: `receipt-settings/${path}`, method, data })
+      await apiClient.request({ url: `receipt-settings/${path}`, method, data, timeout: data instanceof FormData ? UPLOAD_TIMEOUT : undefined })
     },
     onSuccess: async () => {
       setEditing(null)
       setRemoving(null)
       await client.invalidateQueries({ queryKey: ['live'] })
     },
+    meta: { success: (change: ReceiptChange) => change.done },
   })
   const settings = query.data
   return <>
@@ -469,16 +532,14 @@ function ReceiptSettings() {
           {!settings.slips.length && <p className="text-sm text-muted-foreground">No backgrounds yet.</p>}
           {settings.slips.map((slip) => <div key={slip.id} className="flex flex-wrap items-center gap-2 border-t pt-3">
             <span className="mr-auto min-w-0 break-words font-medium">{slip.name}{slip.active && <small className="ml-2 text-primary">Active</small>}</span>
-            {!slip.active && <Button variant="outline" size="sm" disabled={save.isPending} onClick={() => save.mutate({ path: `slips/${slip.id}/activate`, method: 'post' })}>Activate</Button>}
+            {!slip.active && <Button variant="outline" size="sm" disabled={save.isPending} onClick={() => save.mutate({ path: `slips/${slip.id}/activate`, method: 'post', done: `${slip.name} is now the active background` })}>Activate</Button>}
             <Button variant="ghost" size="sm" disabled={save.isPending} onClick={() => { save.reset(); setEditing(slip.id); setRemoving(null) }}><Pencil /> Edit</Button>
             <Button variant="ghost" size="sm" disabled={save.isPending} onClick={() => { save.reset(); setRemoving(slip.id); setEditing(null) }}><Trash2 /> Delete</Button>
           </div>)}
           {editing !== null && <form key={editing} className="grid gap-3 border-t pt-4" onSubmit={(event) => {
             event.preventDefault()
             const data = new FormData(event.currentTarget)
-            const image = data.get('image')
-            if (image instanceof File && !image.size) data.delete('image')
-            save.mutate({ path: editing === 'new' ? 'slips' : `slips/${editing}`, method: 'post', data })
+            save.mutate({ path: editing === 'new' ? 'slips' : `slips/${editing}`, method: 'post', data, done: editing === 'new' ? 'Background added' : 'Background updated' })
           }}>
             <label className="grid gap-1">Background name<Input name="name" minLength={2} maxLength={191} defaultValue={settings.slips.find(({ id }) => id === editing)?.name} required /></label>
             <label className="grid gap-1">Image<Input name="image" type="file" accept="image/jpeg,image/png,image/webp" required={editing === 'new'} /></label>
@@ -487,7 +548,7 @@ function ReceiptSettings() {
           {removing !== null && <form key={removing} className="grid gap-3 border-t pt-4" onSubmit={(event) => {
             event.preventDefault()
             const reason = String(new FormData(event.currentTarget).get('reason') ?? '').trim()
-            if (reason.length >= 3) save.mutate({ path: `slips/${removing}`, method: 'delete', data: { reason } })
+            if (reason.length >= 3) save.mutate({ path: `slips/${removing}`, method: 'delete', data: { reason }, done: 'Background deleted' })
           }}>
             <label className="grid gap-1">Reason for deleting<Input name="reason" required minLength={3} maxLength={500} /></label>
             <div className="flex gap-2"><Button variant="destructive" disabled={save.isPending}>Delete background</Button><Button type="button" variant="outline" disabled={save.isPending} onClick={() => setRemoving(null)}>Cancel</Button></div>
@@ -500,11 +561,11 @@ function ReceiptSettings() {
             {settings.logo_url && <img className="mx-auto max-h-12 max-w-36 object-contain" src={settings.logo_url} alt="Receipt logo" />}
             <strong>Mergui Boss</strong><span className="text-sm">Receipt preview</span>
           </div>
-          <form key={settings.font_color} className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); save.mutate({ path: 'font-color', method: 'put', data: { color: new FormData(event.currentTarget).get('color') } }) }}>
+          <form key={settings.font_color} className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); save.mutate({ path: 'font-color', method: 'put', data: { color: new FormData(event.currentTarget).get('color') }, done: 'Text color saved' }) }}>
             <label className="grid gap-1">Text color<Input className="w-16" name="color" type="color" defaultValue={settings.font_color} /></label>
             <Button variant="outline" disabled={save.isPending}>Save color</Button>
           </form>
-          <form className="grid gap-2" onSubmit={(event) => { event.preventDefault(); save.mutate({ path: 'logo', method: 'post', data: new FormData(event.currentTarget) }) }}>
+          <form className="grid gap-2" onSubmit={(event) => { event.preventDefault(); save.mutate({ path: 'logo', method: 'post', data: new FormData(event.currentTarget), done: 'Logo uploaded' }) }}>
             <label className="grid gap-1">New logo<Input name="logo" type="file" accept="image/jpeg,image/png,image/webp" required /></label>
             <Button variant="outline" disabled={save.isPending}>Upload logo</Button>
           </form>
@@ -519,46 +580,52 @@ function Profile({ user }: { user: Staff['user'] }) {
   const client = useQueryClient()
   const details = useMutation({
     mutationFn: async (form: FormData) => {
-      const photo = form.get('photo')
-      if (photo instanceof File && !photo.size) form.delete('photo')
+      await prepareImageField(form, 'photo', { maxSide: 512 })
       await refreshCsrf()
-      await apiClient.post('profile', form)
+      await apiClient.post('profile', form, { timeout: UPLOAD_TIMEOUT })
     },
     onSuccess: () => client.invalidateQueries({ queryKey: ['staff-session'] }),
+    meta: { success: 'Profile updated' },
   })
-  const [passwordState, setPasswordState] = useState({ pending: false, message: '', failed: false })
+  const [passwordState, setPasswordState] = useState({ pending: false, error: '' })
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const target = event.currentTarget
     const form = new FormData(target)
-    setPasswordState({ pending: true, message: '', failed: false })
+    setPasswordState({ pending: true, error: '' })
     try {
       await refreshCsrf()
       await apiClient.put('profile/password', Object.fromEntries(form))
       target.reset()
-      setPasswordState({ pending: false, message: 'Password updated.', failed: false })
+      setPasswordState({ pending: false, error: '' })
+      toast.success('Password updated')
     } catch (error) {
-      setPasswordState({ pending: false, message: error instanceof Error ? error.message : 'Password update failed.', failed: true })
+      const message = error instanceof Error ? error.message : 'Password update failed.'
+      setPasswordState({ pending: false, error: message })
+      toast.error(message)
     }
   }
-  return <div className="grid max-w-3xl gap-8 sm:grid-cols-2">
-    <form className="grid content-start gap-3" key={JSON.stringify([user.name, user.email, user.phone])} onSubmit={(event) => { event.preventDefault(); details.mutate(new FormData(event.currentTarget)) }}>
+  return <div className="grid max-w-4xl items-start gap-5 md:grid-cols-2">
+    <form className="panel grid content-start gap-3 p-5" key={JSON.stringify([user.name, user.email, user.phone])} onSubmit={(event) => {
+      event.preventDefault()
+      const target = event.currentTarget
+      details.mutate(new FormData(target), { onSuccess: () => target.reset() })
+    }}>
       <h3 className="font-semibold">Account details</h3>
       <label className="grid gap-1">Name<Input name="name" defaultValue={user.name} required /></label>
       <label className="grid gap-1">Email<Input name="email" type="email" defaultValue={user.email} required /></label>
       <label className="grid gap-1">Phone<Input name="phone" type="tel" defaultValue={user.phone ?? ''} /></label>
       <label className="grid gap-1">Photo<Input name="photo" type="file" accept="image/jpeg,image/png,image/webp" /></label>
       {details.error && <p role="alert" className="text-destructive">{details.error.message}</p>}
-      {details.isSuccess && <p role="status">Profile updated.</p>}
-      <Button type="submit" disabled={details.isPending}>Save profile</Button>
+      <Button type="submit" disabled={details.isPending}>{details.isPending ? 'Saving…' : 'Save profile'}</Button>
     </form>
-    <form className="grid content-start gap-3" onSubmit={changePassword}>
+    <form className="panel grid content-start gap-3 p-5" onSubmit={changePassword}>
       <h3 className="font-semibold">Change password</h3>
       <label className="grid gap-1">Current password<Input name="current_password" type="password" autoComplete="current-password" required /></label>
       <label className="grid gap-1">New password<Input name="password" type="password" autoComplete="new-password" minLength={10} required /></label>
       <label className="grid gap-1">Confirm password<Input name="password_confirmation" type="password" autoComplete="new-password" minLength={10} required /></label>
-      {passwordState.message && <p role={passwordState.failed ? 'alert' : 'status'} className={passwordState.failed ? 'text-destructive' : undefined}>{passwordState.message}</p>}
-      <Button type="submit" disabled={passwordState.pending}>Update password</Button>
+      {passwordState.error && <p role="alert" className="text-destructive">{passwordState.error}</p>}
+      <Button type="submit" disabled={passwordState.pending}>{passwordState.pending ? 'Updating…' : 'Update password'}</Button>
     </form>
   </div>
 }
@@ -585,6 +652,7 @@ function LookupEntry({ endpoint, entry, close }: { endpoint: string; entry: { id
       close()
       await client.invalidateQueries({ queryKey: ['live'] })
     },
+    meta: { success: entry.deleting ? 'Entry deleted' : entry.id === undefined ? 'Entry added' : 'Entry updated' },
   })
   return <Dialog open onOpenChange={(open) => { if (!open && !save.isPending) close() }}><DialogContent>
     <DialogTitle>{entry.deleting ? 'Delete entry' : entry.id === undefined ? 'Add entry' : 'Edit entry'}</DialogTitle>
@@ -648,9 +716,8 @@ function ManagementEdit({ endpoint, row, deleting, close }: { endpoint: 'rates' 
       await refreshCsrf()
       if (deleting) await apiClient.delete(url, { data: { reason } })
       else if (isRate) {
-        const photo = form.get('photo')
-        if (photo instanceof File && !photo.size) form.delete('photo')
-        await apiClient.post(url, form)
+        await prepareImageField(form, 'photo', { maxSide: 256, keepAlpha: true })
+        await apiClient.post(url, form, { timeout: UPLOAD_TIMEOUT })
       } else {
         const role = form.get('role')
         const password = form.get('password')
@@ -660,8 +727,11 @@ function ManagementEdit({ endpoint, row, deleting, close }: { endpoint: 'rates' 
       }
       await client.invalidateQueries({ queryKey: ['live'] })
       close()
+      toast.success(`${isRate ? 'Rate' : 'Staff account'} ${deleting ? 'deleted' : creating ? 'added' : 'updated'}`)
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'The request failed.')
+      const message = failure instanceof Error ? failure.message : 'The request failed.'
+      setError(message)
+      toast.error(message)
     } finally {
       setPending(false)
     }
@@ -708,6 +778,7 @@ function CustomerDetails({ id, close }: { id: string; close: () => void }) {
       close()
       await client.invalidateQueries({ queryKey: ['live'] })
     },
+    meta: { success: deleting ? 'Customer deleted' : 'Customer updated' },
   })
   const customer = query.data?.customer
   return <Dialog open onOpenChange={(open) => { if (!open && !save.isPending) close() }}><DialogContent className="max-h-[90dvh] overflow-y-auto">

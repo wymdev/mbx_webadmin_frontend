@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { ApiError, get, send, setUnauthorizedHandler } from '@/services/api'
 import { ErrorPage, errorDetail, errorKind } from '@/components/error-page'
+import { BrandSymbol } from '@/components/brand-mark'
 import { SignInPage } from './sign-in-page'
 
 export const staffSchema = z.object({
@@ -113,9 +114,7 @@ export function SplashScreen() {
   return (
     <main className="grid min-h-dvh place-items-center" aria-busy="true" aria-label="Loading MBX Ledger">
       <div className="flex items-center gap-3 text-muted-foreground">
-        <span className="brand-symbol animate-pulse" aria-hidden="true">
-          m<span>↗</span>
-        </span>
+        <BrandSymbol className="h-9 animate-pulse" />
         <span className="text-sm font-semibold">Loading workspace…</span>
       </div>
     </main>

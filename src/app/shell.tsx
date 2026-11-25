@@ -29,6 +29,7 @@ import {
 import { useSignOut, useStaff } from '@/features/auth/session'
 import { PageSkeleton } from '@/components/page-skeleton'
 import { BangkokClock } from '@/components/bangkok-clock'
+import { BrandLogo, BrandSymbol } from '@/components/brand-mark'
 
 export function useThemeEffect() {
   const theme = usePreferences((state) => state.theme)
@@ -98,8 +99,9 @@ export function Shell() {
 
       <div className="min-w-0 lg:py-2 lg:pr-2">
         <div className="flex min-h-dvh flex-col bg-background lg:min-h-[calc(100dvh-1rem)] lg:rounded-2xl lg:border lg:shadow-xs">
-          <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/70 sm:px-5 lg:top-2 lg:rounded-t-2xl lg:px-6">
-            <Button variant="ghost" size="icon-sm" className="lg:hidden" aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
+          {/* On large screens the card sits 0.5rem below the window edge; the ::before strip fills that gap
+              in the page colour so rows scrolling up never show above the bar. */}
+          <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b bg-background px-3 sm:px-5 lg:top-2 lg:rounded-t-2xl lg:px-6 lg:before:pointer-events-none lg:before:absolute lg:before:inset-x-[-1px] lg:before:-top-[calc(0.5rem+1px)] lg:before:h-[calc(0.5rem+1px)] lg:before:bg-surface">            <Button variant="ghost" size="icon-sm" className="lg:hidden" aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
               <Menu />
             </Button>
             <Tooltip>
@@ -158,18 +160,8 @@ function SidebarContent({
   const visible = (item: NavItem) => !item.requires || staff.permissions[item.requires]
   return (
     <div className="flex h-full flex-col bg-[var(--sidebar)] text-[#d7e6dc]">
-      <div className={cn('flex h-14 shrink-0 items-center gap-2.5 px-5', collapsed && 'justify-center px-0')}>
-        <span className="brand-symbol origin-center scale-[0.8]" aria-hidden="true">
-          m<span>↗</span>
-        </span>
-        {!collapsed && (
-          <span className="grid leading-tight">
-            <strong className="text-[15px] font-extrabold tracking-tight text-white">
-              MBX <span className="font-normal opacity-50">/</span> Ledger
-            </strong>
-            <span className="text-[11px] text-[#8fb19e]">Mergui Boss Money Exchange</span>
-          </span>
-        )}
+      <div className={cn('flex h-16 shrink-0 items-center px-5', collapsed && 'justify-center px-0')}>
+        {collapsed ? <BrandSymbol className="h-8" /> : <BrandLogo className="h-10" />}
       </div>
 
       <div className={cn('grid gap-2 px-4 pb-3', collapsed && 'px-3')}>

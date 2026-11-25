@@ -15,6 +15,9 @@ export const apiClient = axios.create({
   headers: { Accept: 'application/json' },
 })
 
+/** File uploads get longer than other requests: the API server receives data slowly. */
+export const UPLOAD_TIMEOUT = 120_000
+
 /** Error from the API's standard envelope: `{ message, error: { code, status, details, request_id } }`. */
 export class ApiError extends Error {
   constructor(
@@ -49,11 +52,14 @@ apiClient.interceptors.response.use(
     for (const [key, value] of Object.entries(body?.error?.details ?? {})) {
       if (Array.isArray(value)) fields[key] = value.map(String)
     }
+    const timedOut = error.code === AxiosError.ECONNABORTED || error.code === AxiosError.ETIMEDOUT
     const message =
       body?.message ||
-      (status === undefined
-        ? 'Cannot reach the MBX server. Check your connection and try again.'
-        : 'The request could not be completed.')
+      (timedOut
+        ? 'The MBX server took too long to answer. Try again in a moment.'
+        : status === undefined
+          ? 'Cannot reach the MBX server. Check your connection and try again.'
+          : 'The request could not be completed.')
     const apiError = new ApiError(message, status, body?.error?.code, fields, body?.error?.request_id)
     const url = error.config?.url ?? ''
     if (status === 401 && !url.startsWith('auth/')) onUnauthorized?.()
