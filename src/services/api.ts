@@ -42,11 +42,23 @@ type ErrorBody = {
   error?: { code?: string; details?: Record<string, unknown>; request_id?: string }
 }
 
+/** File downloads get errors as a Blob; read the JSON envelope out of it. */
+async function errorBody(data: unknown): Promise<ErrorBody | undefined> {
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    try {
+      return JSON.parse(await data.text()) as ErrorBody
+    } catch {
+      return undefined
+    }
+  }
+  return data as ErrorBody | undefined
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<ErrorBody>) => {
+  async (error: AxiosError<ErrorBody>) => {
     if (axios.isCancel(error)) return Promise.reject(error)
-    const body = error.response?.data
+    const body = await errorBody(error.response?.data)
     const status = error.response?.status
     const fields: Record<string, string[]> = {}
     for (const [key, value] of Object.entries(body?.error?.details ?? {})) {
@@ -155,13 +167,15 @@ export async function send<T = unknown>(
   }
 }
 
-/** Download a file response (CSV export) with the given name. */
+/** Download a file (Excel export, template). Uses the server's file name when it sends one. */
 export async function download(path: string, filename: string, params?: Record<string, unknown>) {
-  const response = await apiClient.get<Blob>(path, { params, responseType: 'blob' })
+  const response = await apiClient.get<Blob>(path, { params, responseType: 'blob', timeout: UPLOAD_TIMEOUT })
+  const disposition = String(response.headers['content-disposition'] ?? '')
+  const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1]
   const url = URL.createObjectURL(response.data)
   const link = document.createElement('a')
   link.href = url
-  link.download = filename
+  link.download = named ? decodeURIComponent(named) : filename
   link.click()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

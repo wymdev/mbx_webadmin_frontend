@@ -7,11 +7,16 @@ import Trash2 from 'lucide-react/icons/trash-2'
 import RotateCcw from 'lucide-react/icons/rotate-ccw'
 import Pencil from 'lucide-react/icons/pencil'
 import Plus from 'lucide-react/icons/plus'
+import ChartLine from 'lucide-react/icons/chart-line'
 import { z } from 'zod'
 import { toast } from 'sonner'
-import { apiClient, refreshCsrf, UPLOAD_TIMEOUT } from '@/services/api'
+import { apiClient, download as downloadFile, refreshCsrf, UPLOAD_TIMEOUT } from '@/services/api'
 import { prepareImageField } from '@/lib/image'
-import { cn } from '@/lib/utils'
+import { cn, formatRate } from '@/lib/utils'
+import { ServerTable, type Row, type ServerColumn, type ServerFilter } from '@/components/server-table'
+import { RateHistoryDialog, RateSparkline, RateWithTrend } from '@/features/rates/rate-trends'
+import { ReceiptDesigner } from '@/features/receipts/receipt-designer'
+import { ReceiptView } from '@/features/receipts/receipt-view'
 import { useStaff, type Staff } from '@/features/auth/session'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,17 +28,17 @@ import { PageHeader } from '@/components/page-header'
 const counts = z.object({ transactions: z.number(), buy: z.number(), sell: z.number() })
 const dashboard = z.object({ totals: counts, all_time: z.object({ customers: z.number() }) })
 const sections = [
-  { title: 'Overview', endpoint: 'dashboard', fields: [] },
-  { title: 'Transactions', endpoint: 'transactions', fields: ['transaction_id', 'exchange_type', 'from_currency', 'to_currency', 'amount', 'total', 'created_at'] },
-  { title: 'Reports', endpoint: 'reports/summary', fields: [] },
-  { title: 'Customers', endpoint: 'customers', fields: ['customer_id', 'name', 'transactions_count', 'last_transaction_at'] },
-  { title: 'Rates', endpoint: 'rates', fields: ['currency', 'country', 'buy', 'sell'] },
-  { title: 'Transfer methods', endpoint: 'transfer-methods', fields: ['name'] },
-  { title: 'Customer sources', endpoint: 'customer-sources', fields: ['name'] },
-  { title: 'Transaction trash', endpoint: 'transactions/trashed', fields: ['transaction_id', 'exchange_type', 'amount', 'deleted_at'] },
-  { title: 'Staff trash', endpoint: 'users/trashed', fields: ['name', 'email', 'deleted_at'] },
-  { title: 'Staff', endpoint: 'users', fields: ['name', 'email', 'created_at'] },
-  { title: 'Audit log', endpoint: 'audit-logs', fields: ['seq', 'event', 'auditable_type', 'auditable_id', 'created_at'] },
+  { title: 'Overview', endpoint: 'dashboard' },
+  { title: 'Transactions', endpoint: 'transactions' },
+  { title: 'Reports', endpoint: 'reports/summary' },
+  { title: 'Customers', endpoint: 'customers' },
+  { title: 'Exchange rates', endpoint: 'rates' },
+  { title: 'Transfer methods', endpoint: 'transfer-methods' },
+  { title: 'Customer sources', endpoint: 'customer-sources' },
+  { title: 'Transaction trash', endpoint: 'transactions/trashed' },
+  { title: 'Staff trash', endpoint: 'users/trashed' },
+  { title: 'Staff', endpoint: 'users' },
+  { title: 'Audit log', endpoint: 'audit-logs' },
 ] as const
 
 const paths = {
@@ -65,7 +70,7 @@ export default function LegacyPage() {
 function Ledger({ account, livePaths }: { account: Staff; livePaths: string[] }) {
   const { pathname } = useLocation()
   if (!livePaths.includes(pathname)) return <div className="panel empty-state"><h1>Page unavailable</h1><Link className="text-primary underline" to="/">Back to overview</Link></div>
-  if (pathname === '/settings/slips') return <ReceiptSettings />
+  if (pathname === '/settings/slips') return <ReceiptDesigner />
   if (pathname === '/profile') return <><PageHeader title="My profile" description="Account details and password" /><Profile user={account.user} /></>
   const section = sections.find(({ endpoint }) => endpoint === paths[pathname as keyof typeof paths]) ?? sections[0]
   return (
@@ -102,11 +107,6 @@ function Overview() {
   )
 }
 
-const list = z.object({
-  data: z.array(z.record(z.string(), z.unknown())),
-  meta: z.object({ pagination: z.object({ has_more: z.boolean() }) }).optional(),
-})
-
 const report = z.object({ groups: z.array(z.object({
   from_currency: z.string(), to_currency: z.string(), exchange_type: z.string(),
   count: z.number(), amount_sum: z.string(), total_sum: z.string(),
@@ -117,15 +117,10 @@ function Reports() {
   const [to, setTo] = useState(from)
   const filter = { 'filter[date_from]': from, 'filter[date_to]': to }
   const query = useLiveQuery(['reports', from, to], (signal) => read('reports/summary', report, signal, filter))
-  const download = useMutation({ mutationFn: async () => {
-    const response = await apiClient.get<Blob>('transactions/export', { params: filter, responseType: 'blob' })
-    const url = URL.createObjectURL(response.data)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `mbx-transactions-${from}-${to}.csv`
-    link.click()
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }, meta: { success: 'CSV export downloaded' } })
+  const download = useMutation({
+    mutationFn: () => downloadFile('exports/transactions', `mbx-transactions-${from}-${to}.xlsx`, filter),
+    meta: { success: 'Excel file downloaded' },
+  })
   return <section className="panel overflow-hidden">
     <div className="flex flex-wrap items-end gap-3 border-b px-5 py-4">
       <label className="grid gap-1">From (Bangkok)<Input type="date" value={from} onChange={(event) => {
@@ -136,7 +131,7 @@ function Reports() {
         const next = event.target.value
         if (next && next >= from) setTo(next)
       }} /></label>
-      <Button variant="outline" disabled={!query.data || download.isPending} onClick={() => download.mutate()}><Download /> Export CSV</Button>
+      <Button variant="outline" disabled={!query.data || download.isPending} onClick={() => download.mutate()}><Download /> {download.isPending ? 'Exporting…' : 'Export to Excel'}</Button>
     </div>
     {download.error && <p role="alert" className="border-b px-5 py-3 text-sm text-destructive">{download.error.message}</p>}
     <QueryState loading={query.isPending} error={query.error} retry={query.refetch}>
@@ -154,13 +149,6 @@ function Reports() {
 }
 const NUMERIC_FIELDS = new Set(['amount', 'total', 'buy', 'sell', 'transactions_count', 'seq'])
 const isNumeric = (field: string) => NUMERIC_FIELDS.has(field)
-
-const COLUMN_LABELS: Record<string, string> = {
-  transaction_id: 'Transaction ID', customer_id: 'Customer ID', exchange_type: 'Type',
-  from_currency: 'From', to_currency: 'To', created_at: 'Date (Bangkok)', deleted_at: 'Deleted (Bangkok)',
-  last_transaction_at: 'Last deal (Bangkok)', transactions_count: 'Deals', auditable_type: 'Record', auditable_id: 'Record ID',
-}
-const columnLabel = (field: string) => COLUMN_LABELS[field] ?? field.replaceAll('_', ' ')
 
 const bangkokDateTime = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -187,9 +175,227 @@ function Cell({ field, value }: { field: string; value: unknown }) {
   return text
 }
 
+/** A column showing one API field through `Cell`. */
+function field(id: string, label: string, options: Partial<ServerColumn> = {}): ServerColumn {
+  return { id, label, cell: (row) => <Cell field={id} value={row[id]} />, ...(isNumeric(id) ? { align: 'right' as const } : {}), ...options }
+}
+/** A column of plain text, cut short with the full text on hover. */
+function text(id: string, label: string, options: Partial<ServerColumn> = {}): ServerColumn {
+  return {
+    id, label, ...options,
+    cell: (row) => {
+      const value = row[id]
+      if (typeof value !== 'string' || !value) return <span className="text-muted-foreground">–</span>
+      return <span className="block max-w-64 truncate" title={value}>{value}</span>
+    },
+  }
+}
+const nameOf = (value: unknown) => (value && typeof value === 'object' && 'name' in value ? String((value as { name: unknown }).name) : null)
+const options = (values: string[], labels: Record<string, string> = {}) => values.map((value) => ({ value, label: labels[value] ?? value }))
+
+const AUDIT_EVENTS = ['created', 'updated', 'deleted', 'restored', 'exported', 'login', 'logout', 'login_failed', 'password_changed', 'roles_changed', 'token_issued']
+const AUDIT_TYPES: Record<string, string> = {
+  transaction: 'Transaction', customer: 'Customer', rate: 'Rate', user: 'Staff', transfer_method: 'Transfer method',
+  customer_source: 'Customer source', slip_image: 'Receipt background', slip_logo: 'Receipt logo', receipt_color: 'Receipt colour',
+}
+
+type TableSetup = { columns: ServerColumn[]; filters?: ServerFilter[]; params?: Record<string, string>; paginated?: boolean }
+
+/** Columns, filters and fixed query parameters for each live list. */
+function useTableSetup(endpoint: string): TableSetup {
+  const transactional = endpoint === 'transactions' || endpoint === 'transactions/trashed'
+  const reference = useQuery({
+    queryKey: ['live', 'reference-data'], enabled: transactional, staleTime: 300_000,
+    queryFn: ({ signal }) => read('reference-data', transactionOptions, signal),
+  })
+  const roles = useQuery({
+    queryKey: ['live', 'staff-roles'], enabled: endpoint === 'users', staleTime: 300_000,
+    queryFn: ({ signal }) => read('users/roles', staffRoles, signal),
+  })
+  const currencies = reference.data?.currencies ?? []
+  const type: ServerFilter = { type: 'select', name: 'exchange_type', label: 'Type', options: options(['Buy', 'Sell']) }
+
+  switch (endpoint) {
+    case 'transactions':
+      return {
+        params: { include: 'created_by' },
+        columns: [
+          field('transaction_id', 'Transaction ID', { required: true, sort: 'transaction_id' }),
+          field('created_at', 'Date (Bangkok)', { sort: 'created_at' }),
+          field('exchange_type', 'Type'),
+          text('customer_name', 'Customer'),
+          field('customer_id', 'Customer ID', { hidden: true }),
+          field('from_currency', 'From'),
+          field('amount', 'Amount', { sort: 'amount' }),
+          { id: 'exchange_rate', label: 'Rate', align: 'right', cell: (row) => (typeof row.exchange_rate === 'string' ? formatRate(row.exchange_rate) : '–') },
+          field('to_currency', 'To'),
+          field('total', 'Total', { sort: 'total' }),
+          text('transfer_method', 'Method'),
+          { id: 'created_by', label: 'Staff', cell: (row) => nameOf(row.created_by) ?? '–' },
+          text('description', 'Note', { hidden: true }),
+        ],
+        filters: [
+          { type: 'search', name: 'q', label: 'Search', placeholder: 'Transaction ID or customer name' },
+          type,
+          { type: 'select', name: 'from_currency', label: 'From', options: options(currencies) },
+          { type: 'select', name: 'to_currency', label: 'To', options: options(currencies) },
+          { type: 'select', name: 'transfer_method', label: 'Method', options: options((reference.data?.transfer_methods ?? []).map(({ name }) => name)) },
+          { type: 'select', name: 'customer_source_id', label: 'Source', options: (reference.data?.customer_sources ?? []).map(({ id, name }) => ({ value: String(id), label: name })) },
+          { type: 'date', name: 'date_from', label: 'From date' },
+          { type: 'date', name: 'date_to', label: 'To date' },
+        ],
+      }
+    case 'transactions/trashed':
+      return {
+        params: { include: 'deleted_by' },
+        columns: [
+          field('transaction_id', 'Transaction ID', { required: true, sort: 'transaction_id' }),
+          field('exchange_type', 'Type'),
+          text('customer_name', 'Customer'),
+          field('from_currency', 'From'),
+          field('amount', 'Amount', { sort: 'amount' }),
+          field('to_currency', 'To'),
+          field('total', 'Total', { sort: 'total' }),
+          field('created_at', 'Date (Bangkok)', { hidden: true, sort: 'created_at' }),
+          field('deleted_at', 'Deleted (Bangkok)', { sort: 'deleted_at' }),
+          { id: 'deleted_by', label: 'Deleted by', cell: (row) => nameOf(row.deleted_by) ?? '–' },
+        ],
+        filters: [
+          { type: 'search', name: 'q', label: 'Search', placeholder: 'Transaction ID or customer name' },
+          type,
+          { type: 'date', name: 'deleted_from', label: 'Deleted from' },
+          { type: 'date', name: 'deleted_to', label: 'Deleted to' },
+        ],
+      }
+    case 'customers':
+      return {
+        columns: [
+          field('customer_id', 'Customer ID', { required: true }),
+          text('name', 'Name', { sort: 'name' }),
+          { id: 'phone', label: 'Phone', cell: (row) => (row.phone ? `${row.country_code ? `${String(row.country_code)} ` : ''}${String(row.phone)}` : '–') },
+          { id: 'id_type', label: 'ID type', cell: (row) => (row.id_type === 'nrc' ? 'NRC' : row.id_type === 'passport' ? 'Passport' : '–') },
+          { id: 'id_number', label: 'ID number', hidden: true, cell: (row) => identityNumber(row) },
+          text('nationality', 'Nationality'),
+          field('transactions_count', 'Deals'),
+          field('last_transaction_at', 'Last deal (Bangkok)'),
+          field('created_at', 'Joined (Bangkok)', { hidden: true, sort: 'created_at' }),
+          text('facebook_profile_url', 'Facebook', { hidden: true }),
+        ],
+        filters: [
+          { type: 'search', name: 'q', label: 'Search', placeholder: 'Name, phone or customer ID' },
+          { type: 'select', name: 'id_type', label: 'ID type', options: options(['nrc', 'passport'], { nrc: 'NRC', passport: 'Passport' }) },
+          { type: 'date', name: 'created_from', label: 'Joined from' },
+          { type: 'date', name: 'created_to', label: 'Joined to' },
+        ],
+      }
+    case 'rates':
+      return {
+        paginated: false,
+        columns: [
+          {
+            id: 'currency', label: 'Currency', required: true,
+            cell: (row) => <span className="inline-flex items-center gap-2 font-semibold">
+              {typeof row.photo_url === 'string' && <img src={row.photo_url} alt="" className="size-6 rounded-full border object-cover" />}
+              {String(row.currency ?? '')}
+            </span>,
+          },
+          text('country', 'Country'),
+          { id: 'buy', label: 'Buy', align: 'right', cell: (row) => <RateWithTrend value={row.buy} trend={row.buy_trend} /> },
+          { id: 'sell', label: 'Sell', align: 'right', cell: (row) => <RateWithTrend value={row.sell} trend={row.sell_trend} /> },
+          { id: 'movement', label: 'Last 30 days', cell: (row) => (typeof row.id === 'number' ? <RateSparkline rateId={row.id} /> : '–') },
+          field('updated_at', 'Updated (Bangkok)'),
+        ],
+      }
+    case 'transfer-methods':
+    case 'customer-sources':
+      return {
+        columns: [
+          text('name', 'Name', { required: true, sort: 'name' }),
+          field('created_at', 'Added (Bangkok)', { sort: 'created_at' }),
+          field('updated_at', 'Changed (Bangkok)', { hidden: true }),
+        ],
+        filters: [{ type: 'search', name: 'q', label: 'Search', placeholder: 'Name' }],
+      }
+    case 'users':
+      return {
+        columns: [
+          {
+            id: 'name', label: 'Name', required: true, sort: 'name',
+            cell: (row) => <span className="inline-flex items-center gap-2 font-medium">
+              {typeof row.photo_url === 'string' && !row.photo_url.endsWith('user2.png') && <img src={row.photo_url} alt="" className="size-7 rounded-full object-cover" />}
+              {String(row.name ?? '')}
+            </span>,
+          },
+          text('email', 'Email', { sort: 'email' }),
+          text('phone', 'Phone'),
+          { id: 'roles', label: 'Role', cell: (row) => (Array.isArray(row.roles) ? row.roles.map(nameOf).filter(Boolean).join(', ') || '–' : '–') },
+          field('created_at', 'Added (Bangkok)', { sort: 'created_at' }),
+        ],
+        filters: [
+          { type: 'search', name: 'q', label: 'Search', placeholder: 'Name or email' },
+          { type: 'select', name: 'role', label: 'Role', options: options((roles.data ?? []).map(({ name }) => name)) },
+        ],
+      }
+    case 'users/trashed':
+      return {
+        columns: [
+          text('name', 'Name', { required: true, sort: 'name' }),
+          text('email', 'Email'),
+          field('deleted_at', 'Deleted (Bangkok)', { sort: 'deleted_at' }),
+        ],
+      }
+    case 'audit-logs':
+      return {
+        columns: [
+          field('seq', '#', { required: true, sort: 'seq' }),
+          field('created_at', 'Time (Bangkok)'),
+          { id: 'event', label: 'Event', cell: (row) => String(row.event ?? '').replaceAll('_', ' ') },
+          { id: 'auditable_type', label: 'Record', cell: (row) => AUDIT_TYPES[String(row.auditable_type)] ?? String(row.auditable_type ?? '–') },
+          text('auditable_id', 'Record ID'),
+          { id: 'user', label: 'By', cell: (row) => nameOf(row.user) ?? 'System' },
+          text('channel', 'Channel'),
+          text('reason', 'Reason'),
+          text('ip_address', 'IP address', { hidden: true }),
+        ],
+        filters: [
+          { type: 'select', name: 'event', label: 'Event', options: options(AUDIT_EVENTS, Object.fromEntries(AUDIT_EVENTS.map((event) => [event, event.replaceAll('_', ' ')]))) },
+          { type: 'select', name: 'auditable_type', label: 'Record', options: options(Object.keys(AUDIT_TYPES), AUDIT_TYPES) },
+          { type: 'select', name: 'channel', label: 'Channel', options: options(['admin', 'mobile', 'public', 'system']) },
+          { type: 'date', name: 'date_from', label: 'From date' },
+          { type: 'date', name: 'date_to', label: 'To date' },
+        ],
+      }
+    default:
+      return { columns: [] }
+  }
+}
+
+function identityNumber(row: Row) {
+  const nrc = row.nrc as { code?: string; township?: string; type?: string; number?: string } | null | undefined
+  if (row.id_type === 'nrc' && nrc) return `${nrc.code ?? ''}/${nrc.township ?? ''}(${nrc.type ?? ''})${nrc.number ?? ''}`
+  return typeof row.passport === 'string' && row.passport ? row.passport : '–'
+}
+
+/** Excel export list and import type for each live list (transaction import is for admins). */
+function excelFor(endpoint: string, admin: boolean): { exportList?: string; importType?: string } | undefined {
+  switch (endpoint) {
+    case 'transactions': return { exportList: 'transactions', importType: admin ? 'transactions' : undefined }
+    case 'transactions/trashed': return { exportList: 'transactions-trash' }
+    case 'customers': return { exportList: 'customers', importType: 'customers' }
+    case 'rates': return { exportList: 'rates', importType: 'rates' }
+    case 'transfer-methods': return { exportList: 'transfer-methods', importType: 'transfer-methods' }
+    case 'customer-sources': return { exportList: 'customer-sources', importType: 'customer-sources' }
+    case 'users': return { exportList: 'staff' }
+    case 'audit-logs': return { exportList: 'audit-logs' }
+    default: return undefined
+  }
+}
+
 function LedgerTable({ section, startCreating }: { section: (typeof sections)[number]; startCreating: boolean }) {
   const client = useQueryClient()
-  const [rateHistory, setRateHistory] = useState<number | null>(null)
+  const { permissions } = useStaff()
+  const setup = useTableSetup(section.endpoint)
+  const [rateHistory, setRateHistory] = useState<Row | null>(null)
   const reorder = useMutation({
     mutationFn: async (ids: number[]) => {
       await refreshCsrf()
@@ -198,7 +404,6 @@ function LedgerTable({ section, startCreating }: { section: (typeof sections)[nu
     onSuccess: () => client.invalidateQueries({ queryKey: ['live', 'rates'] }),
     meta: { success: 'Rate order updated' },
   })
-  const [page, setPage] = useState(1)
   const [customerId, setCustomerId] = useState<string | null>(null)
   const [listEdit, setListEdit] = useState<{ id?: number; name: string; deleting?: boolean } | null>(null)
   const [management, setManagement] = useState<{ row: Record<string, unknown>; deleting?: boolean } | null>(null)
@@ -207,77 +412,58 @@ function LedgerTable({ section, startCreating }: { section: (typeof sections)[nu
   const [creating, setCreating] = useState(startCreating)
   const [action, setAction] = useState<{ id: number; kind: 'receipt' | 'delete' | 'restore' | 'edit' } | null>(null)
   const hasActions = managed || lookupList || section.endpoint === 'transactions' || section.endpoint === 'transactions/trashed' || section.endpoint === 'users/trashed' || section.endpoint === 'customers'
-  const paginated = lookupList || ['transactions', 'customers', 'transactions/trashed', 'users', 'users/trashed', 'audit-logs'].includes(section.endpoint)
-  const query = useLiveQuery([section.endpoint, page], async (signal) => {
-    const response = await apiClient.get(section.endpoint, { signal, params: paginated ? { page } : undefined })
-    return list.parse(response.data)
-  })
-  const rows = query.data?.data ?? []
-  return (
-    <QueryState loading={query.isPending} error={query.error} retry={query.refetch}>
-      {managed && management && <ManagementEdit endpoint={section.endpoint as 'rates' | 'users'} {...management} close={() => setManagement(null)} />}
-      {rateHistory !== null && <RateHistory id={rateHistory} close={() => setRateHistory(null)} />}
-      {listEdit && <LookupEntry endpoint={section.endpoint} entry={listEdit} close={() => setListEdit(null)} />}
-      {creating && <CreateTransaction close={() => setCreating(false)} />}
-      {query.data && <section className="panel overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
-          <div>
-            <h2 className="font-semibold">{section.title}</h2>
-            <p className="panel-subtitle">{rows.length ? `${rows.length.toLocaleString()} ${rows.length === 1 ? 'record' : 'records'}${paginated ? ` on page ${page}` : ''}` : 'Nothing here yet'}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {lookupList && <Button onClick={() => setListEdit({ name: '' })}><Plus /> Add entry</Button>}
-            {managed && <Button onClick={() => setManagement({ row: {} })}><Plus /> {section.endpoint === 'rates' ? 'Add rate' : 'Add staff account'}</Button>}
-            {section.endpoint === 'transactions' && <Button onClick={() => setCreating(true)}><Plus /> New transaction</Button>}
-          </div>
-        </div>
-        {reorder.error && <p className="border-b px-5 py-3 text-sm text-destructive" role="alert">{reorder.error.message}</p>}
-        {rows.length === 0 ? <p className="empty-state text-sm text-muted-foreground">No records found.</p> : <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-[var(--card-header)] text-xs text-muted-foreground"><tr>{section.fields.map((field) => <th key={field} scope="col" className={cn('whitespace-nowrap border-b px-5 py-3 font-semibold capitalize', isNumeric(field) && 'text-right')}>{columnLabel(field)}</th>)}{hasActions && <th scope="col" className="border-b px-5 py-3 text-right font-semibold">Actions</th>}</tr></thead>
-            <tbody>{rows.map((row, index) => {
-              const id = row.id
-              return <tr key={String(id ?? row.customer_id ?? index)} className="transition-colors hover:bg-muted/60">{section.fields.map((field) => <td key={field} className={cn('whitespace-nowrap border-b px-5 py-3', isNumeric(field) && 'text-right tabular-nums')}><Cell field={field} value={row[field]} /></td>)}
-                {hasActions && <td className="whitespace-nowrap border-b px-3 py-2 text-right">
-                  {section.endpoint === 'customers' && typeof row.customer_id === 'string' && row.customer_id && <Button variant="ghost" size="sm" onClick={() => setCustomerId(String(row.customer_id))}><Pencil /> View / edit</Button>}
-                  {section.endpoint !== 'customers' && typeof id === 'number' && (managed ? <>
-                    {section.endpoint === 'rates' && <>
-                      <Button variant="ghost" size="sm" onClick={() => setRateHistory(id)}>History</Button>
-                      {([-1, 1] as const).map((direction) => <Button key={direction} variant="ghost" size="sm" disabled={reorder.isPending || index + direction < 0 || index + direction >= query.data.data.length} onClick={() => {
-                        const ids = query.data.data.map((record) => record.id).filter((value): value is number => typeof value === 'number')
-                        if (ids.length !== query.data.data.length) return
-                        const other = index + direction
-                        ;[ids[index], ids[other]] = [ids[other], ids[index]]
-                        reorder.mutate(ids)
-                      }}>{direction < 0 ? 'Move up' : 'Move down'}</Button>)}
-                    </>}
-                    <Button variant="ghost" size="sm" onClick={() => setManagement({ row })}><Pencil /> Edit</Button>
-                    <Button variant="ghost" size="sm" onClick={() => setManagement({ row, deleting: true })}><Trash2 /> Delete</Button>
-                  </> : lookupList ? <>
-                    <Button variant="ghost" size="sm" onClick={() => setListEdit({ id, name: String(row.name ?? '') })}><Pencil /> Edit</Button>
-                    <Button variant="ghost" size="sm" onClick={() => setListEdit({ id, name: String(row.name ?? ''), deleting: true })}><Trash2 /> Delete</Button>
-                  </> : section.endpoint === 'transactions' ? <>
-                    <Button variant="ghost" size="sm" onClick={() => setAction({ id, kind: 'receipt' })}><Printer /> Receipt</Button>
-                    <Button variant="ghost" size="sm" onClick={() => setAction({ id, kind: 'edit' })}><Pencil /> Edit invoice</Button>
-                    <Button variant="ghost" size="sm" onClick={() => setAction({ id, kind: 'delete' })}><Trash2 /> Trash</Button>
-                  </> : <Button variant="ghost" size="sm" onClick={() => setAction({ id, kind: 'restore' })}><RotateCcw /> Restore</Button>)}
-                </td>}
-              </tr>
-            })}</tbody>
-          </table>
-        </div>}
-        {paginated && <div className="flex items-center justify-between gap-3 px-5 py-3">
-          <span className="text-sm text-muted-foreground">Page {page}</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</Button>
-            <Button variant="outline" size="sm" disabled={!query.data.meta?.pagination.has_more} onClick={() => setPage(page + 1)}>Next</Button>
-          </div>
-        </div>}
-      </section>}
-      {customerId && <CustomerDetails key={customerId} id={customerId} close={() => setCustomerId(null)} />}
-      {action?.kind === 'edit' ? <EditInvoice key={action.id} id={action.id} close={() => setAction(null)} saved={() => setAction({ id: action.id, kind: 'receipt' })} /> : action && <TransactionAction key={`${action.kind}:${action.id}`} id={action.id} kind={action.kind} staff={section.endpoint === 'users/trashed'} close={() => setAction(null)} />}
-    </QueryState>
-  )
+
+  const toolbar = <>
+    {lookupList && <Button onClick={() => setListEdit({ name: '' })}><Plus /> Add entry</Button>}
+    {managed && <Button onClick={() => setManagement({ row: {} })}><Plus /> {section.endpoint === 'rates' ? 'Add rate' : 'Add staff account'}</Button>}
+    {section.endpoint === 'transactions' && <Button onClick={() => setCreating(true)}><Plus /> New transaction</Button>}
+  </>
+
+  const rowActions = (row: Row) => {
+    const id = row.id
+    if (section.endpoint === 'customers')
+      return typeof row.customer_id === 'string' && row.customer_id ? <Button variant="ghost" size="sm" onClick={() => setCustomerId(String(row.customer_id))}><Pencil /> View / edit</Button> : null
+    if (typeof id !== 'number') return null
+    if (managed) return <>
+      {section.endpoint === 'rates' && <Button variant="ghost" size="sm" onClick={() => setRateHistory(row)}><ChartLine /> History</Button>}
+      <Button variant="ghost" size="sm" onClick={() => setManagement({ row })}><Pencil /> Edit</Button>
+      <Button variant="ghost" size="sm" onClick={() => setManagement({ row, deleting: true })}><Trash2 /> Delete</Button>
+    </>
+    if (lookupList) return <>
+      <Button variant="ghost" size="sm" onClick={() => setListEdit({ id, name: String(row.name ?? '') })}><Pencil /> Edit</Button>
+      <Button variant="ghost" size="sm" onClick={() => setListEdit({ id, name: String(row.name ?? ''), deleting: true })}><Trash2 /> Delete</Button>
+    </>
+    if (section.endpoint === 'transactions') return <>
+      <Button variant="ghost" size="sm" onClick={() => setAction({ id, kind: 'receipt' })}><Printer /> Receipt</Button>
+      <Button variant="ghost" size="sm" onClick={() => setAction({ id, kind: 'edit' })}><Pencil /> Edit</Button>
+      <Button variant="ghost" size="sm" onClick={() => setAction({ id, kind: 'delete' })}><Trash2 /> Trash</Button>
+    </>
+    return <Button variant="ghost" size="sm" onClick={() => setAction({ id, kind: 'restore' })}><RotateCcw /> Restore</Button>
+  }
+
+  return <>
+    {managed && management && <ManagementEdit endpoint={section.endpoint as 'rates' | 'users'} {...management} close={() => setManagement(null)} />}
+    {rateHistory && typeof rateHistory.id === 'number' && <RateHistoryDialog
+      rate={{ id: rateHistory.id, currency: String(rateHistory.currency ?? ''), country: typeof rateHistory.country === 'string' ? rateHistory.country : undefined, buy: typeof rateHistory.buy === 'string' ? rateHistory.buy : undefined, sell: typeof rateHistory.sell === 'string' ? rateHistory.sell : undefined }}
+      close={() => setRateHistory(null)}
+    />}
+    {listEdit && <LookupEntry endpoint={section.endpoint} entry={listEdit} close={() => setListEdit(null)} />}
+    {creating && <CreateTransaction close={() => setCreating(false)} />}
+    <ServerTable
+      id={section.endpoint}
+      title={section.title}
+      endpoint={section.endpoint}
+      {...setup}
+      toolbar={toolbar}
+      rowActions={hasActions ? rowActions : undefined}
+      rowKey={(row, index) => String(row.id ?? row.customer_id ?? row.seq ?? index)}
+      excel={excelFor(section.endpoint, permissions.manage_users)}
+      onReorder={section.endpoint === 'rates' ? (ids) => reorder.mutate(ids) : undefined}
+      reorderPending={reorder.isPending}
+    />
+    {customerId && <CustomerDetails key={customerId} id={customerId} close={() => setCustomerId(null)} />}
+    {action?.kind === 'edit' ? <EditInvoice key={action.id} id={action.id} close={() => setAction(null)} saved={() => setAction({ id: action.id, kind: 'receipt' })} /> : action && <TransactionAction key={`${action.kind}:${action.id}`} id={action.id} kind={action.kind} staff={section.endpoint === 'users/trashed'} close={() => setAction(null)} />}
+  </>
 }
 
 const receipt = z.object({
@@ -463,21 +649,7 @@ function TransactionAction({ id, kind, staff = false, close }: { id: number; kin
       <DialogDescription>{staff ? 'Staff account' : 'Transaction'} #{id}</DialogDescription>
       {kind === 'receipt' ? <QueryState loading={query.isPending} error={query.error} retry={query.refetch}>
         {query.data && <>
-          <article className="transaction-print relative isolate grid gap-3 overflow-hidden rounded-md border bg-white p-5 tabular-nums" style={{ color: /^#[0-9a-f]{6}$/i.test(query.data.look.font_color) ? query.data.look.font_color : '#000000' }}>
-            {query.data.look.background_url && <img alt="" className="absolute inset-0 -z-10 h-full w-full object-cover" src={query.data.look.background_url} />}
-            <header className="border-b pb-3">{query.data.look.logo_url && <img className="mb-2 max-h-12 max-w-36 object-contain" src={query.data.look.logo_url} alt="" />}<strong className="text-lg">{query.data.look.business_name}</strong><p>Exchange receipt #{query.data.transaction.transaction_id}</p>{query.data.local_time && <p>{query.data.local_time} (Bangkok)</p>}</header>
-            <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-              {Object.entries({
-                Type: query.data.transaction.exchange_type,
-                Customer: query.data.transaction.customer_name,
-                Amount: `${query.data.transaction.amount} ${query.data.transaction.from_currency}`,
-                'Exchange rate': query.data.transaction.exchange_rate,
-                'Transfer method': query.data.transaction.transfer_method,
-                'Total': `${query.data.transaction.total} ${query.data.transaction.to_currency}`,
-              }).map(([label, value]) => value && <div key={label} className="col-span-2 grid grid-cols-subgrid"><dt>{label}</dt><dd className="wrap-anywhere text-right font-semibold">{value}</dd></div>)}
-            </dl>
-            {query.data.transaction.description && <p className="wrap-anywhere whitespace-pre-wrap border-t pt-3 text-sm">{query.data.transaction.description}</p>}
-          </article>
+          <ReceiptView printable look={query.data.look} transaction={query.data.transaction} localTime={query.data.local_time} />
           <Button type="button" variant="outline" disabled={query.isFetching} onClick={() => window.print()}><Printer /> Print receipt</Button>
         </>}
       </QueryState> : <form className="grid gap-3" onSubmit={(event) => {
@@ -493,88 +665,6 @@ function TransactionAction({ id, kind, staff = false, close }: { id: number; kin
   </Dialog>
 }
 
-const receiptSettings = z.object({
-  font_color: z.string().regex(/^#[0-9a-f]{6}$/i), logo_url: z.string().nullable(),
-  slips: z.array(z.object({ id: z.number(), name: z.string(), image_url: z.string().nullish(), active: z.boolean() })),
-})
-
-/** One receipt-settings write; `done` is the toast shown when it succeeds. */
-type ReceiptChange = { path: string; method: 'post' | 'put' | 'delete'; data?: object; done: string }
-
-function ReceiptSettings() {
-  const client = useQueryClient()
-  const query = useLiveQuery(['receipt-settings'], (signal) => read('receipt-settings', receiptSettings, signal))
-  const [editing, setEditing] = useState<number | 'new' | null>(null)
-  const [removing, setRemoving] = useState<number | null>(null)
-  const save = useMutation({
-    mutationFn: async ({ path, method, data }: ReceiptChange) => {
-      if (data instanceof FormData) {
-        await prepareImageField(data, 'image', { maxSide: 1600 })
-        await prepareImageField(data, 'logo', { maxSide: 600, keepAlpha: true })
-      }
-      await refreshCsrf()
-      await apiClient.request({ url: `receipt-settings/${path}`, method, data, timeout: data instanceof FormData ? UPLOAD_TIMEOUT : undefined })
-    },
-    onSuccess: async () => {
-      setEditing(null)
-      setRemoving(null)
-      await client.invalidateQueries({ queryKey: ['live'] })
-    },
-    meta: { success: (change: ReceiptChange) => change.done },
-  })
-  const settings = query.data
-  return <>
-    <PageHeader title="Receipt settings" description="Manage the logo, text color, and slip backgrounds." />
-    <QueryState loading={query.isPending} error={query.error} retry={query.refetch}>
-      {settings && <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <section className="panel grid content-start gap-4 p-5">
-          <div className="flex items-center justify-between gap-3"><h2 className="font-semibold">Slip backgrounds</h2><Button disabled={save.isPending} onClick={() => { save.reset(); setEditing('new'); setRemoving(null) }}><Plus /> Add background</Button></div>
-          {!settings.slips.length && <p className="text-sm text-muted-foreground">No backgrounds yet.</p>}
-          {settings.slips.map((slip) => <div key={slip.id} className="flex flex-wrap items-center gap-2 border-t pt-3">
-            <span className="mr-auto min-w-0 break-words font-medium">{slip.name}{slip.active && <small className="ml-2 text-primary">Active</small>}</span>
-            {!slip.active && <Button variant="outline" size="sm" disabled={save.isPending} onClick={() => save.mutate({ path: `slips/${slip.id}/activate`, method: 'post', done: `${slip.name} is now the active background` })}>Activate</Button>}
-            <Button variant="ghost" size="sm" disabled={save.isPending} onClick={() => { save.reset(); setEditing(slip.id); setRemoving(null) }}><Pencil /> Edit</Button>
-            <Button variant="ghost" size="sm" disabled={save.isPending} onClick={() => { save.reset(); setRemoving(slip.id); setEditing(null) }}><Trash2 /> Delete</Button>
-          </div>)}
-          {editing !== null && <form key={editing} className="grid gap-3 border-t pt-4" onSubmit={(event) => {
-            event.preventDefault()
-            const data = new FormData(event.currentTarget)
-            save.mutate({ path: editing === 'new' ? 'slips' : `slips/${editing}`, method: 'post', data, done: editing === 'new' ? 'Background added' : 'Background updated' })
-          }}>
-            <label className="grid gap-1">Background name<Input name="name" minLength={2} maxLength={191} defaultValue={settings.slips.find(({ id }) => id === editing)?.name} required /></label>
-            <label className="grid gap-1">Image<Input name="image" type="file" accept="image/jpeg,image/png,image/webp" required={editing === 'new'} /></label>
-            <div className="flex gap-2"><Button disabled={save.isPending}>Save background</Button><Button type="button" variant="outline" disabled={save.isPending} onClick={() => setEditing(null)}>Cancel</Button></div>
-          </form>}
-          {removing !== null && <form key={removing} className="grid gap-3 border-t pt-4" onSubmit={(event) => {
-            event.preventDefault()
-            const reason = String(new FormData(event.currentTarget).get('reason') ?? '').trim()
-            if (reason.length >= 3) save.mutate({ path: `slips/${removing}`, method: 'delete', data: { reason }, done: 'Background deleted' })
-          }}>
-            <label className="grid gap-1">Reason for deleting<Input name="reason" required minLength={3} maxLength={500} /></label>
-            <div className="flex gap-2"><Button variant="destructive" disabled={save.isPending}>Delete background</Button><Button type="button" variant="outline" disabled={save.isPending} onClick={() => setRemoving(null)}>Cancel</Button></div>
-          </form>}
-        </section>
-        <section className="panel grid content-start gap-4 p-5">
-          <h2 className="font-semibold">Appearance</h2>
-          <div className="relative isolate grid min-h-40 place-content-center gap-2 overflow-hidden rounded-md border bg-white p-4 text-center" style={{ color: settings.font_color }}>
-            {settings.slips.find((slip) => slip.active)?.image_url && <img className="absolute inset-0 -z-10 h-full w-full object-cover" src={settings.slips.find((slip) => slip.active)?.image_url ?? undefined} alt="" />}
-            {settings.logo_url && <img className="mx-auto max-h-12 max-w-36 object-contain" src={settings.logo_url} alt="Receipt logo" />}
-            <strong>Mergui Boss</strong><span className="text-sm">Receipt preview</span>
-          </div>
-          <form key={settings.font_color} className="flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); save.mutate({ path: 'font-color', method: 'put', data: { color: new FormData(event.currentTarget).get('color') }, done: 'Text color saved' }) }}>
-            <label className="grid gap-1">Text color<Input className="w-16" name="color" type="color" defaultValue={settings.font_color} /></label>
-            <Button variant="outline" disabled={save.isPending}>Save color</Button>
-          </form>
-          <form className="grid gap-2" onSubmit={(event) => { event.preventDefault(); save.mutate({ path: 'logo', method: 'post', data: new FormData(event.currentTarget), done: 'Logo uploaded' }) }}>
-            <label className="grid gap-1">New logo<Input name="logo" type="file" accept="image/jpeg,image/png,image/webp" required /></label>
-            <Button variant="outline" disabled={save.isPending}>Upload logo</Button>
-          </form>
-        </section>
-        {save.error && <p role="alert" className="text-destructive lg:col-span-2">{save.error.message}</p>}
-      </div>}
-    </QueryState>
-  </>
-}
 
 function Profile({ user }: { user: Staff['user'] }) {
   const client = useQueryClient()
@@ -675,21 +765,6 @@ const customerDetails = z.object({
 })
 
 const staffRoles = z.array(z.object({ id: z.number(), name: z.string(), assignable: z.boolean() }))
-
-const rateHistoryRows = z.array(z.object({ id: z.number(), created_at: z.string().nullable(), buy: z.string(), sell: z.string() }))
-
-function RateHistory({ id, close }: { id: number; close: () => void }) {
-  const query = useLiveQuery(['rate-history', id], (signal) => read(`rates/${id}/history`, rateHistoryRows, signal))
-  return <Dialog open onOpenChange={(open) => { if (!open) close() }}><DialogContent className="max-h-[90dvh] overflow-auto">
-    <DialogTitle>Rate history</DialogTitle><DialogDescription>Last 30 days</DialogDescription>
-    <QueryState loading={query.isPending} error={query.error} retry={query.refetch}>
-      {query.data?.length ? <table className="w-full text-left tabular-nums text-sm">
-        <thead><tr><th scope="col">Bangkok time</th><th scope="col">Buy</th><th scope="col">Sell</th></tr></thead>
-        <tbody>{[...query.data].reverse().map((point) => <tr className="border-t" key={point.id}><td className="py-2">{point.created_at ? new Date(point.created_at).toLocaleString('en-GB', { timeZone: 'Asia/Bangkok' }) : '—'}</td><td>{point.buy}</td><td>{point.sell}</td></tr>)}</tbody>
-      </table> : <p>No rate changes in this period.</p>}
-    </QueryState>
-  </DialogContent></Dialog>
-}
 
 function ManagementEdit({ endpoint, row, deleting, close }: { endpoint: 'rates' | 'users'; row: Record<string, unknown>; deleting?: boolean; close: () => void }) {
   const client = useQueryClient()
