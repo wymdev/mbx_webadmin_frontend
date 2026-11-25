@@ -7,6 +7,7 @@ import Zap from 'lucide-react/icons/zap'
 import ChartLine from 'lucide-react/icons/chart-line'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BrandLogo } from '@/components/brand-mark'
 import { useSignIn } from './session'
 
 export function SignInPage() {
@@ -26,17 +27,7 @@ export function SignInPage() {
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60rem_30rem_at_120%_120%,#fdb60022,transparent),repeating-linear-gradient(120deg,transparent_0px,transparent_39px,#d8ecdf10_40px,transparent_41px)]"
         />
-        <div className="flex items-center gap-3">
-          <span className="brand-symbol" aria-hidden="true">
-            m<span>↗</span>
-          </span>
-          <span className="grid">
-            <strong className="text-lg font-extrabold">
-              MBX <span className="font-normal opacity-60">/</span> Ledger
-            </strong>
-            <span className="text-xs text-[#bfd5c8]">Mergui Boss Money Exchange</span>
-          </span>
-        </div>
+        <BrandLogo className="h-12 self-start md:h-14" />
         <div className="hidden md:block">
           <div aria-hidden="true" className="mb-5 h-0.5 w-10 bg-[var(--gold)]" />
           <p className="max-w-sm text-3xl leading-tight font-extrabold lg:text-4xl">

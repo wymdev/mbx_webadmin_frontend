@@ -1,7 +1,7 @@
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react'
 import { createBrowserRouter, isRouteErrorResponse, Outlet, RouterProvider, useRouteError } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Toaster } from 'sonner'
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { toast, Toaster } from 'sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthGate, SplashScreen, useCan, type Permission } from '@/features/auth/session'
 import { ErrorPage } from '@/components/error-page'
@@ -12,7 +12,29 @@ const Overview = lazy(() => import('@/features/dashboard/overview-page'))
 // Screens not redesigned yet still come from the first live build.
 const LegacyPage = lazy(() => import('./live-workspace'))
 
+declare module '@tanstack/react-query' {
+  interface Register {
+    mutationMeta: {
+      /**
+       * Toast shown when the action succeeds (text, or built from the mutation's variables).
+       * Actions that set it also toast the server's message when they fail.
+       */
+      success?: string | ((variables: never) => string)
+    }
+  }
+}
+
 const client = new QueryClient({
+  mutationCache: new MutationCache({
+    onSuccess: (_data, variables, _result, mutation) => {
+      const success = mutation.meta?.success
+      if (!success) return
+      toast.success(typeof success === 'function' ? (success as (variables: unknown) => string)(variables) : success)
+    },
+    onError: (error, _variables, _result, mutation) => {
+      if (mutation.meta?.success) toast.error(error.message)
+    },
+  }),
   defaultOptions: {
     queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false },
     mutations: { retry: false },

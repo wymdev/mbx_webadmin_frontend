@@ -280,6 +280,7 @@ function Desk({ reference }: { reference: ReferenceData }) {
       setConfirming(false)
       void client.invalidateQueries()
     },
+    meta: { success: 'Deal saved' },
   })
 
   const fieldErrors = useMemo(() => {
