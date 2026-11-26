@@ -4,6 +4,8 @@ import { z } from 'zod'
 import Check from 'lucide-react/icons/check'
 import ImageIcon from 'lucide-react/icons/image'
 import Pencil from 'lucide-react/icons/pencil'
+import ReceiptText from 'lucide-react/icons/receipt-text'
+import Smartphone from 'lucide-react/icons/smartphone'
 import Plus from 'lucide-react/icons/plus'
 import Trash2 from 'lucide-react/icons/trash-2'
 import Upload from 'lucide-react/icons/upload'
@@ -14,6 +16,7 @@ import { PageHeader } from '@/components/page-header'
 import { QueryState } from '@/components/query-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PhoneChatFrame } from '@/components/phone-frame'
 import { ReceiptView, SAMPLE_INVOICES } from './receipt-view'
 
 const settingsSchema = z.object({
@@ -43,6 +46,7 @@ export function ReceiptDesigner() {
   })
   const [draft, setDraft] = useState<Draft>({})
   const [sampleId, setSampleId] = useState(SAMPLE_INVOICES[0].id)
+  const [frame, setFrame] = useState<'phone' | 'full'>('phone')
   const [editing, setEditing] = useState<number | 'new' | null>(null)
   const [removing, setRemoving] = useState<{ kind: 'slip' | 'logo'; id: number } | null>(null)
 
@@ -108,14 +112,44 @@ export function ReceiptDesigner() {
                     ))}
                   </div>
                 </div>
-                <div className="mx-auto w-full max-w-md">
-                  <ReceiptView
-                    look={{ business_name: settings.business_name || 'Mergui Boss', font_color: look.color, logo_url: look.logo?.logo_url ?? settings.logo_url, background_url: look.slip?.image_url ?? null }}
-                    transaction={sample.transaction}
-                    localTime={sample.time}
-                  />
+                <div className="flex justify-center">
+                  <div className="inline-flex rounded-lg border bg-muted/50 p-0.5" role="radiogroup" aria-label="Preview as">
+                    {([['phone', 'On a phone', Smartphone], ['full', 'Full size', ReceiptText]] as const).map(([id, label, Icon]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={frame === id}
+                        onClick={() => setFrame(id)}
+                        className="flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted-foreground transition aria-checked:bg-background aria-checked:text-foreground aria-checked:shadow-xs"
+                      >
+                        <Icon className="size-4" aria-hidden="true" /> {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <p className="text-center text-xs text-muted-foreground">Example invoice for checking the look. It is not saved and never printed.</p>
+                {(() => {
+                  const receipt = (
+                    <ReceiptView
+                      look={{ business_name: settings.business_name || 'Mergui Boss', font_color: look.color, logo_url: look.logo?.logo_url ?? settings.logo_url, background_url: look.slip?.image_url ?? null }}
+                      transaction={sample.transaction}
+                      localTime={sample.time}
+                      className={frame === 'phone' ? 'w-[25rem] rounded-none border-0' : undefined}
+                    />
+                  )
+                  return frame === 'phone' ? (
+                    <div className="rounded-xl bg-[radial-gradient(ellipse_at_top,var(--card-header),transparent_70%)] py-4">
+                      <PhoneChatFrame sender={settings.business_name || 'Mergui Boss'} avatarUrl={look.logo?.logo_url ?? settings.logo_url} caption="Thank you! Here is your receipt.">
+                        {receipt}
+                      </PhoneChatFrame>
+                    </div>
+                  ) : (
+                    <div className="mx-auto w-full max-w-md">{receipt}</div>
+                  )
+                })()}
+                <p className="text-center text-xs text-muted-foreground">
+                  {frame === 'phone' ? 'How the customer sees the receipt in Viber, Line or Messenger. ' : ''}Example invoice for checking the look. It is not saved and never printed.
+                </p>
                 {pending.length ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--gold)]/60 bg-[var(--gold)]/10 p-3 text-sm" role="status">
                     <span>

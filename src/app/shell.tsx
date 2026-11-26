@@ -1,8 +1,11 @@
 import { useEffect, useState, Suspense, type CSSProperties, type ReactElement } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import ChevronsUpDown from 'lucide-react/icons/chevrons-up-down'
 import LogOut from 'lucide-react/icons/log-out'
 import Menu from 'lucide-react/icons/menu'
+import Maximize from 'lucide-react/icons/maximize'
+import Minimize from 'lucide-react/icons/minimize'
 import Moon from 'lucide-react/icons/moon'
 import PanelLeft from 'lucide-react/icons/panel-left'
 import ChevronDown from 'lucide-react/icons/chevron-down'
@@ -130,6 +133,7 @@ export function Shell() {
               <Button variant="ghost" size="icon-sm" className="sm:hidden" aria-label="Search" onClick={() => setPaletteOpen(true)}>
                 <Search />
               </Button>
+              <FullscreenButton />
               <ThemeButton />
               <span className="mx-2 hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
               <AccountMenu />
@@ -278,6 +282,32 @@ function SidebarTooltip({ label, show, children }: { label: string; show: boolea
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** Full screen for the whole workspace (hides the browser bar and tabs). Esc also leaves it. */
+function FullscreenButton() {
+  const [on, setOn] = useState(() => typeof document !== 'undefined' && !!document.fullscreenElement)
+  useEffect(() => {
+    const sync = () => setOn(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
+  if (typeof document === 'undefined' || !document.fullscreenEnabled) return null
+  const toggle = () => {
+    const done = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()
+    done.catch(() => toast.error('Full screen is not available in this browser.'))
+  }
+  const label = on ? 'Exit full screen' : 'Full screen'
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon-sm" onClick={toggle} aria-label={label} aria-pressed={on} className="hidden sm:inline-flex">
+          {on ? <Minimize /> : <Maximize />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{on ? 'Exit full screen (Esc)' : 'Full screen'}</TooltipContent>
     </Tooltip>
   )
 }
