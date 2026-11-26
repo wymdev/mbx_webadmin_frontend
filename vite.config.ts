@@ -12,6 +12,26 @@ export default defineConfig({
   // The admin must be served from an origin Laravel trusts for cookie sign-in (SANCTUM_STATEFUL_DOMAINS).
   server: { proxy: apiProxy },
   preview: { proxy: apiProxy },
+  build: {
+    rolldownOptions: {
+      output: {
+        // Libraries in their own files: they change rarely, so after a deploy the browser keeps
+        // them from its cache and downloads only the app code that changed.
+        codeSplitting: {
+          // A group takes only the packages it names, not everything they import (otherwise small
+          // shared helpers such as clsx land in the charts file and pull it into the first load).
+          includeDependenciesRecursively: false,
+          groups: [
+            { name: 'vendor-react', test: /node_modules[\\/](react|react-dom|scheduler|react-router|react-router-dom)[\\/]/, priority: 30 },
+            { name: 'vendor-charts', test: /node_modules[\\/](recharts|d3-[^\\/]+|victory-vendor|internmap|decimal\.js-light|es-toolkit|immer|reselect|@reduxjs|redux|react-redux|use-sync-external-store|eventemitter3|tiny-invariant)[\\/]/, priority: 20 },
+            { name: 'vendor-dates', test: /node_modules[\\/](react-day-picker|date-fns|@date-fns)[\\/]/, priority: 20 },
+            { name: 'vendor-ui', test: /node_modules[\\/](radix-ui|@radix-ui|cmdk|sonner|@floating-ui|react-remove-scroll[^\\/]*|aria-hidden|react-style-singleton|use-callback-ref|use-sidecar|detect-node-es|get-nonce|lucide-react)[\\/]/, priority: 10 },
+            { name: 'vendor', test: /node_modules[\\/]/, priority: 1 },
+          ],
+        },
+      },
+    },
+  },
   optimizeDeps: {
     // Avoid scanning optional chart engines and the whole icon catalog on first boot.
     noDiscovery: true,
