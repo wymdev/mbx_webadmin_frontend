@@ -7,10 +7,29 @@ import { AuthGate, SplashScreen, useCan, type Permission } from '@/features/auth
 import { ErrorPage } from '@/components/error-page'
 import { Shell, useThemeEffect } from './shell'
 
-const DealDesk = lazy(() => import('@/features/desk/deal-desk'))
-const Overview = lazy(() => import('@/features/dashboard/overview-page'))
+const loadDealDesk = () => import('@/features/desk/deal-desk')
+const loadOverview = () => import('@/features/dashboard/overview-page')
 // Screens not redesigned yet still come from the first live build.
-const LegacyPage = lazy(() => import('./live-workspace'))
+const loadLegacy = () => import('./live-workspace')
+const DealDesk = lazy(loadDealDesk)
+const Overview = lazy(loadOverview)
+const LegacyPage = lazy(loadLegacy)
+
+/**
+ * Start downloading the opened page's code now, while the session check is still running, instead
+ * of after it (the two used to load one after the other). The other pages follow once the browser
+ * is idle, so moving between them never waits for a download. import() is cached, so React.lazy
+ * reuses these downloads.
+ */
+function preloadPages() {
+  const path = window.location.pathname
+  const first = path === '/' ? loadOverview : path.startsWith('/desk') ? loadDealDesk : loadLegacy
+  first().catch(() => undefined)
+  const rest = () => [loadOverview, loadDealDesk, loadLegacy].forEach((load) => load !== first && load().catch(() => undefined))
+  if ('requestIdleCallback' in window) window.requestIdleCallback(rest, { timeout: 4000 })
+  else setTimeout(rest, 2000)
+}
+preloadPages()
 
 declare module '@tanstack/react-query' {
   interface Register {

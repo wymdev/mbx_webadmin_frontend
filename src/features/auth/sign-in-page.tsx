@@ -31,24 +31,24 @@ export function SignInPage() {
         <div className="hidden md:block">
           <div aria-hidden="true" className="mb-5 h-0.5 w-10 bg-[var(--gold)]" />
           <p className="max-w-sm text-3xl leading-tight font-extrabold lg:text-4xl">
-            Every deal, rate and receipt in one place.
+            Exchange made simple, every deal in one place.
           </p>
           <ul className="mt-8 grid gap-3 text-sm text-[#cfe2d6]">
             <li className="flex items-center gap-3">
-              <Zap className="size-4 text-[var(--gold)]" aria-hidden="true" /> Full-screen deal desk
+              <Zap className="size-4 text-[var(--gold)]" aria-hidden="true" /> Record buy and sell deals in seconds
             </li>
             <li className="flex items-center gap-3">
-              <ChartLine className="size-4 text-[var(--gold)]" aria-hidden="true" /> Live business
-              analytics
+              <ChartLine className="size-4 text-[var(--gold)]" aria-hidden="true" /> Today's rates, totals
+              and trends at a glance
             </li>
             <li className="flex items-center gap-3">
               <ShieldCheck className="size-4 text-[var(--gold)]" aria-hidden="true" /> Every change
-              signed in the audit chain
+              kept safely on record
             </li>
           </ul>
         </div>
         <div className="hidden items-center gap-2 border-t border-white/15 pt-5 text-xs font-semibold text-[#bfd5c8] md:flex">
-          <ShieldCheck aria-hidden="true" size={16} /> Staff access only
+          <ShieldCheck aria-hidden="true" size={16} /> Mergui Boss Money Exchange
         </div>
       </aside>
 
@@ -58,14 +58,14 @@ export function SignInPage() {
       >
         <div className="w-full max-w-sm">
           <header className="mb-8">
-            <p className="mb-2 text-sm font-bold text-primary">Staff workspace</p>
             <h1 id="sign-in-title" className="text-3xl font-extrabold text-foreground">
-              Sign in to MBX Ledger
+              Welcome back
             </h1>
+            <p className="mt-2 text-sm text-muted-foreground">Sign in to continue to Mergui Boss.</p>
           </header>
           <form onSubmit={submit} className="grid gap-5" aria-busy={signIn.isPending}>
             <label className="grid gap-2 text-sm font-semibold" htmlFor="staff-email">
-              Work email
+              Email
               <Input
                 id="staff-email"
                 name="email"
